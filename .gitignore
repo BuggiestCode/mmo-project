@@ -1,0 +1,25 @@
+# Exclude folders
+mmo-frontend/
+Util/
+mmo-backend/public/
+
+# Exclude files
+DONOTDELETE_dbLogin.txt
+
+# Optional: Exclude Unity junk
+[Ll]ibrary/
+[Tt]emp/
+[Bb]uild/
+obj/
+*.user
+*.csproj
+*.sln
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+mmo-backend/node_modules/
+mmo-frontend/node_modules/
+mmo-game-server/node_modules/
+dump.sql
