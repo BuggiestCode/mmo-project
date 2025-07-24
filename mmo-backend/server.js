@@ -34,3 +34,32 @@ const port = process.env.PORT || 8080;
 app.listen(port, "0.0.0.0", () =>
   console.log(`API live: http://0.0.0.0:${port}`)
 );
+
+// Clean shutdown for auth server
+process.on('SIGTERM', () => {
+  console.log('Auth server shutting down gracefully...');
+  
+  // Close database connections
+  if (db) {
+    db.end(() => {
+      console.log('Database connection closed');
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+});
+
+process.on('SIGINT', () => {
+  console.log('Auth server interrupted, shutting down gracefully...');
+  
+  // Close database connections  
+  if (db) {
+    db.end(() => {
+      console.log('Database connection closed');
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+});

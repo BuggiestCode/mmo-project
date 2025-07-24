@@ -1,6 +1,7 @@
 const WebSocket = require('ws');
 const { Player } = require('./routes/player');
 const { ConnectedClient } = require('./routes/connectedClient');
+const terrainLoader = require('./terrainLoader');
 
 const TICK_RATE = 500;
 const PORT = process.env.PORT || 8080;
@@ -19,6 +20,9 @@ const wss = new WebSocket.Server({ port: PORT }, () => {
 
 function onDisconnect(client) {
   if (!client) return;
+
+  // Remove from terrain tracking
+  terrainLoader.removePlayer(client.userId);
 
   connectedClients.delete(client.userId);
 
@@ -49,6 +53,20 @@ function heartbeatClients()
 
 function spawnNewPlayer(client)
 {
+  // Load initial chunk for spawn position (BLOCKS until ready)
+  const chunkReady = terrainLoader.updatePlayerChunk(
+    client.userId, 
+    client.player.x, 
+    client.player.y
+  );
+  
+  // If no chunk spawned, catastrophic failure - needs to be handled more gracefully in the future
+  if (!chunkReady) {
+    console.error(`Failed to load spawn chunk for player ${client.userId}`);
+    // Handle spawn failure - maybe default to safe coordinates
+    return;
+  }
+
   // Spawn myself on all clients (including my own)
   for (const otherClient of connectedClients.values()) {
     otherClient.send({
@@ -131,8 +149,25 @@ wss.on('connection', (ws) => {
       else if (data.type === 'move') 
       {
         const client = ws.client
-        if (client) {
-          client.player.move(data.dx || 0, data.dy || 0);
+        if (client) 
+        {
+          const oldX = client.player.x;
+          const oldY = client.player.y;
+          const newX = data.dx || 0;
+          const newY = data.dy || 0;
+          
+          // Check if the target position is walkable (no pathfinding yet)
+          if (terrainLoader.validateMovement(newX, newY)) {
+            // Movement is valid - update player
+            client.player.move(newX, newY);
+            
+            // Update chunk tracking (will block if new chunk needs loading)
+            terrainLoader.updatePlayerChunk(client.userId, newX, newY);
+          } else {
+            // Movement rejected - send current position back to client
+            console.log(`Rejected movement for player ${client.userId}: invalid tile at (${newX}, ${newY})`);
+            // You could send a rejection message here if needed
+          }
         }
       }
       else if (data.type === 'quit') 
@@ -180,3 +215,17 @@ setInterval(() => {
     client.send(payload);
   }
 }, TICK_RATE);
+
+
+// --------------------------------------- Clean shutdown ---------------------------------------
+process.on('SIGTERM', () => {
+  console.log('Shutting down game server...');
+  terrainLoader.destroy();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('Shutting down game server...');
+  terrainLoader.destroy();
+  process.exit(0);
+});
