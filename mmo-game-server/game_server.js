@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const { Player } = require('./routes/player');
 const { ConnectedClient } = require('./routes/connectedClient');
 const terrainLoader = require('./terrainLoader');
+const pathfinding = require('./routes/pathfinding');
 
 const TICK_RATE = 500;
 const PORT = process.env.PORT || 8080;
@@ -151,22 +152,44 @@ wss.on('connection', (ws) => {
         const client = ws.client
         if (client) 
         {
-          const oldX = client.player.x;
-          const oldY = client.player.y;
-          const newX = data.dx || 0;
-          const newY = data.dy || 0;
+          const targetX = data.dx;
+          const targetY = data.dy;
+
+          console.log(`${targetX}, ${targetY}`)
           
-          // Check if the target position is walkable (no pathfinding yet)
-          if (terrainLoader.validateMovement(newX, newY)) {
-            // Movement is valid - update player
-            client.player.move(newX, newY);
+          if (typeof targetX !== 'number' || typeof targetY !== 'number') {
+            console.warn(`Invalid move coordinates from player ${client.userId}`);
+            return;
+          }
+          
+          // Get starting position for pathfinding (current position or next tile if lerping)
+          const startPos = client.player.getPathfindingStartPosition();
+          
+          console.log(`Player ${client.userId} requesting move from (${startPos.x}, ${startPos.y}) to (${targetX}, ${targetY})`);
+          
+          // Calculate path using A*
+          const path = pathfinding.getFullPath(startPos.x, startPos.y, targetX, targetY);
+          
+          if (path && path.length > 0) {
+            // Valid path found - set it on the player
+            client.player.setPath(path);
             
-            // Update chunk tracking (will block if new chunk needs loading)
-            terrainLoader.updatePlayerChunk(client.userId, newX, newY);
+            // Send confirmation to client with the full path for preview
+            client.send({
+              type: 'pathSet',
+              path: path,
+              startPos: startPos
+            });
+            
+            console.log(`Player ${client.userId} path set: ${path.length} steps`);
           } else {
-            // Movement rejected - send current position back to client
-            console.log(`Rejected movement for player ${client.userId}: invalid tile at (${newX}, ${newY})`);
-            // You could send a rejection message here if needed
+            // No valid path found
+            console.log(`No valid path found for player ${client.userId} to (${targetX}, ${targetY})`);
+            client.send({
+              type: 'pathFailed',
+              target: { x: targetX, y: targetY },
+              reason: 'No valid path'
+            });
           }
         }
       }
@@ -200,19 +223,39 @@ setInterval(() => {
 
   const snapshot = [];
 
+  // Process movement for all players
   for (const client of connectedClients.values()) {
     const player = client.player;
+    
+    // Check if player has an active path and get next move
+    if (player.hasActivePath()) {
+      const nextMove = player.getNextMove();
+      
+      if (nextMove) {
+        // Update chunk tracking for the new position
+        terrainLoader.updatePlayerChunk(client.userId, nextMove.x, nextMove.y);
+        
+        // Update player's actual position (this will be the client's target for lerping)
+        player.updatePosition(nextMove.x, nextMove.y);
+        
+        console.log(`Tick: Player ${client.userId} moved to (${nextMove.x}, ${nextMove.y})`);
+      }
+    }
+    
+    // Add to snapshot if player state changed
     if (player.dirty) {
       snapshot.push(player.getSnapshot());
+      player.dirty = false; // Reset dirty flag after snapshot
     }
   }
 
-  if (snapshot.length === 0) return;
+  // Send general state updates if needed
+  if (snapshot.length > 0) {
+    const payload = { type: 'state', players: snapshot };
 
-  const payload = { type: 'state', players: snapshot };
-
-  for (const client of connectedClients.values()) {
-    client.send(payload);
+    for (const client of connectedClients.values()) {
+      client.send(payload);
+    }
   }
 }, TICK_RATE);
 

@@ -11,6 +11,7 @@ class TerrainLoader {
         // Configuration
         this.config = {
             unloadDelay: options.unloadDelay || 30000, // 30 seconds before unloading
+            chunkSize: 16, // Match Unity's TerrainManager.ChunkSize
             ...options
         };
         
@@ -18,6 +19,49 @@ class TerrainLoader {
         this.cleanupInterval = setInterval(() => this.cleanupUnusedChunks(), this.config.unloadDelay);
         
         console.log(`Synchronous terrain loader initialized - server authoritative blocking chunk loading`);
+    }
+
+    /**
+     * Convert world position to chunk coordinates (matches Unity's logic)
+     * @param {number} worldX - World X coordinate
+     * @param {number} worldY - World Y coordinate  
+     * @returns {Object} {chunkX, chunkY} - Chunk coordinates
+     */
+    worldPositionToChunkCoord(worldX, worldY) {
+        // Account for the chunk offset (chunks are centered, so adjust by half chunk size)
+        // This MUST match Unity's TerrainManager.WorldPositionToChunkCoord exactly
+        const adjustedX = worldX + (this.config.chunkSize * 0.5);
+        const adjustedY = worldY + (this.config.chunkSize * 0.5);
+        
+        // Calculate chunk coordinates
+        const chunkX = Math.floor(adjustedX / this.config.chunkSize);
+        const chunkY = Math.floor(adjustedY / this.config.chunkSize);
+        
+        return { chunkX, chunkY };
+    }
+
+    /**
+     * Convert world position to local tile coordinates within a chunk
+     * @param {number} worldX - World X coordinate
+     * @param {number} worldY - World Y coordinate
+     * @returns {Object} {chunkX, chunkY, localX, localY} - Chunk and local coordinates
+     */
+    worldPositionToTileCoord(worldX, worldY) {
+        const { chunkX, chunkY } = this.worldPositionToChunkCoord(worldX, worldY);
+        
+        // Calculate local coordinates within the chunk (0-15)
+        const adjustedX = worldX + (this.config.chunkSize * 0.5);
+        const adjustedY = worldY + (this.config.chunkSize * 0.5);
+        
+        // Handle negative modulo properly - JavaScript % can return negative values
+        let localX = Math.floor(adjustedX % this.config.chunkSize);
+        let localY = Math.floor(adjustedY % this.config.chunkSize);
+        
+        // Ensure local coordinates are always positive (0-15)
+        if (localX < 0) localX += this.config.chunkSize;
+        if (localY < 0) localY += this.config.chunkSize;
+        
+        return { chunkX, chunkY, localX, localY };
     }
 
     /**
@@ -29,8 +73,7 @@ class TerrainLoader {
      * @returns {boolean} True if chunk is loaded and ready
      */
     updatePlayerChunk(playerId, worldX, worldY) {
-        const chunkX = Math.floor(worldX / 16); // Assuming 16 units per chunk
-        const chunkY = Math.floor(worldY / 16);
+        const { chunkX, chunkY } = this.worldPositionToChunkCoord(worldX, worldY);
         const newChunkKey = `${chunkX},${chunkY}`;
         
         const previousChunkKey = this.playerChunks.get(playerId);
@@ -64,7 +107,7 @@ class TerrainLoader {
         // Update player's current chunk
         this.playerChunks.set(playerId, newChunkKey);
         
-        console.log(`Player ${playerId} moved to chunk ${newChunkKey}`);
+        console.log(`Player ${playerId} moved to chunk ${newChunkKey} (world: ${worldX}, ${worldY})`);
         return true;
     }
 
@@ -78,7 +121,6 @@ class TerrainLoader {
             // Decrease reference count for their chunk
             const refCount = this.chunkRefCounts.get(playerChunkKey) || 0;
             this.chunkRefCounts.set(playerChunkKey, Math.max(0, refCount - 1));
-            
             
             this.playerChunks.delete(playerId);
             console.log(`Removed player ${playerId} from terrain tracking (was in chunk ${playerChunkKey})`);
@@ -164,26 +206,24 @@ class TerrainLoader {
             return null; // Chunk not loaded
         }
         
-        if (tileX < 0 || tileX >= 16 || tileY < 0 || tileY >= 16) {
+        if (tileX < 0 || tileX >= this.config.chunkSize || tileY < 0 || tileY >= this.config.chunkSize) {
             return false; // Invalid coordinates
         }
 
-        const flatIndex = tileY * 16 + tileX;
+        const flatIndex = tileY * this.config.chunkSize + tileX;
         return chunk.walkability[flatIndex];
     }
 
     /**
      * Validate if a player can move to a specific world position
-     * SYNCHRONOUSLY loads chunk if needed
+     * SYNCHRONOUSLY loads chunk if needed - USES CORRECTED COORDINATE SYSTEM
      * @param {number} worldX 
      * @param {number} worldY 
      * @returns {boolean} True if the tile is walkable
      */
     validateMovement(worldX, worldY) {
-        const chunkX = Math.floor(worldX / 16);
-        const chunkY = Math.floor(worldY / 16);
-        const localX = worldX - (chunkX * 16);
-        const localY = worldY - (chunkY * 16);
+        // Use the corrected coordinate system that matches Unity
+        const { chunkX, chunkY, localX, localY } = this.worldPositionToTileCoord(worldX, worldY);
         
         // Ensure chunk is loaded (blocks if needed)
         const chunkKey = `${chunkX},${chunkY}`;
@@ -194,11 +234,24 @@ class TerrainLoader {
             }
         }
         
-        return this.isTileWalkable(chunkX, chunkY, localX, localY) === true;
+        const walkable = this.isTileWalkable(chunkX, chunkY, localX, localY);
+        console.log(`Movement validation: world(${worldX}, ${worldY}) -> chunk(${chunkX}, ${chunkY}) tile(${localX}, ${localY}) = ${walkable}`);
+        return walkable === true;
     }
 
     /**
-     * Cleanup chunks that are no longer referenced by any players
+     * Unload a chunk if it's no longer referenced.
+     * @param {string} chunkKey - The key for the chunk to unload
+     */
+    unloadChunk(chunkKey) {
+        if (this.chunks.has(chunkKey)) {
+            this.chunks.delete(chunkKey);
+            console.log(`Chunk ${chunkKey} unloaded.`);
+        }
+    }
+
+    /**
+     * Cleanup unused chunks based on reference counts.
      */
     cleanupUnusedChunks() {
         let unloadedCount = 0;

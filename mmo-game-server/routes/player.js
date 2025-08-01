@@ -10,6 +10,92 @@ class Player {
     this.y = y;
     this.facing = 0;
     this.dirty = false;
+    
+    // Path-based movement system
+    this.currentPath = [];        // Array of {x, y} coordinates remaining in path
+    this.nextTile = null;         // Current target tile being lerped to
+    this.isMoving = false;        // Whether player is currently moving along a path
+  }
+
+  /**
+   * Set a new movement path for the player
+   * @param {Array<{x: number, y: number}>} path - Array of world coordinates to follow
+   */
+  setPath(path) {
+    if (!path || path.length === 0) {
+      this.clearPath();
+      return;
+    }
+
+    this.currentPath = [...path]; // Copy the path
+    this.isMoving = true;
+    console.log(`Player ${this.user_id} set new path with ${path.length} steps`);
+  }
+
+  /**
+   * Get the next tile to move to and advance the path
+   * @returns {{x: number, y: number}|null} Next position or null if no path
+   */
+  getNextMove() {
+    if (!this.isMoving || this.currentPath.length === 0) {
+      return null;
+    }
+
+    // Pop the next tile from the path
+    this.nextTile = this.currentPath.shift();
+    
+    // If path is empty after this move, we'll be done moving
+    if (this.currentPath.length === 0) {
+      this.isMoving = false;
+    }
+
+    this.dirty = true;
+    console.log(`Player ${this.user_id} next move: (${this.nextTile.x}, ${this.nextTile.y}), ${this.currentPath.length} steps remaining`);
+    return this.nextTile;
+  }
+
+  /**
+   * Update player position (called when lerp completes on client)
+   * @param {number} x 
+   * @param {number} y 
+   */
+  updatePosition(x, y) {
+    this.x = x;
+    this.y = y;
+    this.dirty = true;
+  }
+
+  /**
+   * Clear current path and stop movement
+   */
+  clearPath() {
+    this.currentPath = [];
+    this.nextTile = null;
+    this.isMoving = false;
+    console.log(`Player ${this.user_id} path cleared`);
+  }
+
+  /**
+   * Get current position that should be used for pathfinding
+   * If currently lerping to nextTile, use that as the starting point
+   * @returns {{x: number, y: number}}
+   */
+  getPathfindingStartPosition() {
+    // If we have a nextTile, pathfind from there (since we're lerping towards it)
+    if (this.nextTile) {
+      return { x: this.nextTile.x, y: this.nextTile.y };
+    }
+    
+    // Otherwise use current position
+    return { x: this.x, y: this.y };
+  }
+
+  /**
+   * Check if player has an active path
+   * @returns {boolean}
+   */
+  hasActivePath() {
+    return this.isMoving && (this.currentPath.length > 0 || this.nextTile !== null);
   }
 
   move(dx, dy) {
@@ -24,6 +110,8 @@ class Player {
       x: this.x,
       y: this.y,
       facing: this.facing,
+      isMoving: this.isMoving,
+      nextTile: this.nextTile
     };
   }
 }
