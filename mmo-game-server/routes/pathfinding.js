@@ -121,7 +121,7 @@ class Pathfinding {
         openSet.push(startNode);
 
         let iterations = 0;
-        const maxIterations = 1000; // Prevent infinite loops
+        const maxIterations = 1000; // Prevent infinite loops - need to figure out how to make js non-magic numbers, currently it all ends up pretty hard-code-y
 
         while (openSet.length > 0 && iterations < maxIterations) {
             iterations++;

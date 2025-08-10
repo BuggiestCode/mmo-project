@@ -197,6 +197,22 @@ wss.on('connection', (ws) => {
       {
         onDisconnect(ws.client);
       }
+      else if(data.type === 'chat')
+      {
+        console.log(data.chat_contents);
+        for (const client of connectedClients.values()) {
+          // Inform all "other" clients that a message has been received
+          if(client.userId != ws.client.userId)
+          {
+            client.send({
+              type: 'chat',
+              sender: ws.client.username,
+              chat_contents: data.chat_contents,
+              timestamp: data.timestamp
+            });
+          }
+        }
+      }
     } catch (e) {
       console.error('Invalid message:', e);
     }

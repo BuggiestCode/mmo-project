@@ -23,7 +23,6 @@ function signToken(payload) {
 
 // Routes
 app.use("/auth", require("./routes/auth")(db, JWT_SECRET, signToken));
-app.use("/chat", require("./routes/chat")(db, JWT_SECRET));
 
 // Static WebGL build
 const path = require("path");

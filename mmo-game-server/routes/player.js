@@ -98,12 +98,6 @@ class Player {
     return this.isMoving && (this.currentPath.length > 0 || this.nextTile !== null);
   }
 
-  move(dx, dy) {
-    this.x = dx;
-    this.y = dy;
-    this.dirty = true;
-  }
-
   getSnapshot() {
     return {
       id: this.user_id,
