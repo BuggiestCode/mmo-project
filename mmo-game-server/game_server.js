@@ -1,11 +1,14 @@
 const WebSocket = require('ws');
+const express = require('express');
+const cors = require('cors');
+const http = require('http');
 const { Player } = require('./routes/player');
 const { ConnectedClient } = require('./routes/connectedClient');
 const terrainLoader = require('./terrainLoader');
 const pathfinding = require('./routes/pathfinding');
 
 const TICK_RATE = 500;
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8080;  // Single port for both HTTP and WebSocket
 
 const connectedClients = new Map();
 
@@ -15,8 +18,102 @@ if (!JWT_SECRET) {
   throw new Error("JWT_SECRET is not defined in environment variables");
 }
 
-const wss = new WebSocket.Server({ port: PORT }, () => {
-  console.log(`Game server running on port ${PORT}`);
+const INTER_APP_SECRET = process.env.INTER_APP_SECRET;
+if (!INTER_APP_SECRET) {
+  console.warn("INTER_APP_SECRET is not defined - duplicate login prevention will be disabled");
+}
+
+// Create Express app for HTTP endpoints
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Middleware to verify inter-service authentication
+function verifyInterAppAuth(req, res, next) {
+  // If INTER_APP_SECRET is not set, skip authentication (for development/testing)
+  if (!INTER_APP_SECRET) {
+    return next();
+  }
+  
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  const token = authHeader.slice(7);
+  if (token !== INTER_APP_SECRET) {
+    return res.status(401).json({ error: 'Invalid auth token' });
+  }
+  
+  next();
+}
+
+// Health check endpoint (no auth required)
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    service: 'game-server-http-api',
+    timestamp: Date.now(),
+    connectedClients: connectedClients.size
+  });
+});
+
+// API endpoint to check if a user has an active session
+app.get('/api/check-session/:userId', verifyInterAppAuth, (req, res) => {
+  const userId = parseInt(req.params.userId);
+  
+  if (!connectedClients.has(userId)) {
+    return res.json({ connected: false });
+  }
+  
+  const client = connectedClients.get(userId);
+  
+  // Check if the client has an active WebSocket connection
+  if (client.isConnected()) {
+    return res.json({ 
+      connected: true,
+      lastHeartbeat: Date.now()
+    });
+  }
+  
+  // Check if they're in soft reconnect window (disconnected < 30s ago)
+  if (client.disconnectedAt) {
+    const timeSinceDisconnect = Date.now() - client.disconnectedAt;
+    if (timeSinceDisconnect < 30000) {
+      return res.json({
+        connected: false,
+        inReconnectWindow: true,
+        disconnectedAt: client.disconnectedAt
+      });
+    }
+  }
+  
+  // Client exists but is not connected and outside reconnect window
+  return res.json({ connected: false });
+});
+
+// Create HTTP server and attach both Express and WebSocket
+const server = http.createServer(app);
+
+// Create WebSocket server using the same HTTP server
+const wss = new WebSocket.Server({ server });
+
+// Start the combined HTTP/WebSocket server
+// Don't specify a host to listen on all available interfaces (IPv4 and IPv6)
+server.listen(PORT, (err) => {
+  if (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  } else {
+    console.log(`Game server running on port ${PORT} (all interfaces)`);
+    console.log(`- WebSocket endpoint: ws://[hostname]:${PORT}`);
+    console.log(`- HTTP API endpoint: http://[hostname]:${PORT}/api/*`);
+    console.log(`Environment: INTER_APP_SECRET configured: ${!!INTER_APP_SECRET}`);
+  }
+});
+
+server.on('error', (err) => {
+  console.error('Server error:', err);
 });
 
 function onDisconnect(client) {
@@ -130,6 +227,7 @@ wss.on('connection', (ws) => {
             // Soft reconnect in time window
             client.ws = ws;
             ws.client = client;
+            client.disconnectedAt = null; // Clear disconnect timestamp on reconnect
 
             console.log(`Reattached user ${user_id} to new socket`);
 
@@ -141,8 +239,16 @@ wss.on('connection', (ws) => {
           } else {
             // Duplicate login (fully connected already)
             console.warn(`User ${user_id} already has a live connection`);
-            // Silently deny the new websocket request
-            ws.close();
+            
+            // Send error message before closing
+            ws.send(JSON.stringify({
+              type: 'error',
+              code: 'ALREADY_LOGGED_IN',
+              message: 'User already has an active session on another connection'
+            }));
+            
+            // Give client time to receive the message before closing
+            setTimeout(() => ws.close(), 100);
             return;
           }
         }

@@ -11,7 +11,7 @@ RUN npm install --production
 # Copy the rest of your app
 COPY . .
 
-# Expose WebSocket port (matches fly.toml)
+# Expose combined HTTP/WebSocket port (matches fly.toml)
 EXPOSE 8080
 
 # Start the server
