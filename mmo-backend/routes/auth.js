@@ -51,47 +51,34 @@ module.exports = (db, JWT_SECRET, signToken) => {
       const match = await bcrypt.compare(password, user.password_hash);
       if (!match) return res.status(401).send("Bad password");
 
-      // Check if user already has an active game session (only if configured)
-      const interAppSecret = process.env.INTER_APP_SECRET;
-      console.log('Checking for duplicate login - INTER_APP_SECRET configured:', !!interAppSecret);
-      
-      if (interAppSecret) {
-        try {
-          const gameServerUrl = process.env.GAME_SERVER_URL || 'http://localhost:8081';
-          console.log(`Checking game server at: ${gameServerUrl}/api/check-session/${user.id}`);
+      // Check if user already has an active session in the database
+      try {
+        const sessionResult = await db.query(
+          `SELECT world, connection_state FROM active_sessions WHERE user_id = $1`,
+          [user.id]
+        );
+        
+        if (sessionResult.rows.length > 0) {
+          const session = sessionResult.rows[0];
+          console.log('Session check for user', username, ':', session);
           
-          const response = await fetch(`${gameServerUrl}/api/check-session/${user.id}`, {
-            headers: {
-              'Authorization': `Bearer ${interAppSecret}`
-            }
-          });
-
-        if (response.ok) {
-          const sessionData = await response.json();
-          console.log('Game server session check response:', sessionData);
-          
-          // If user is actively connected, deny the login
-          if (sessionData.connected) {
-            console.log(`Blocking duplicate login for user ${username} (ID: ${user.id})`);
+          // If user is actively connected (state 0), deny the login
+          if (session.connection_state === 0) {
+            console.log(`Blocking duplicate login for user ${username} (ID: ${user.id}) - active on ${session.world}`);
             return res.status(409).json({ 
               error: "User already logged in",
-              message: "This account is already logged in from another location. Please log out from the other session first."
+              message: `This account is already logged in on ${session.world}. Please log out from the other session first.`
             });
           }
           
-          console.log(`Allowing login for user ${username} - not currently connected`);
-          // If in reconnect window, allow login (soft reconnect case)
-          // Otherwise, allow login (user not connected)
+          // If in soft disconnect state (1), allow login (reconnect case)
+          console.log(`Allowing login for user ${username} - in soft disconnect state`);
         } else {
-          // If we can't reach game server, log it but allow login
-          console.warn('Could not verify game session status:', response.status);
+          console.log(`Allowing login for user ${username} - no active session`);
         }
-        } catch (gameServerError) {
-          // If game server is down or unreachable, log but don't block login
-          console.error('Game server check failed:', gameServerError);
-        }
-      } else {
-        console.log('INTER_APP_SECRET not set - skipping duplicate login check');
+      } catch (sessionError) {
+        console.error('Session check failed:', sessionError);
+        // On error, allow login but log the issue
       }
 
       const token = signToken({ id: Number(user.id), username });

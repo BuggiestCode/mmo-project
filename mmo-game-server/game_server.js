@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
+const { Pool } = require('pg');
 const { Player } = require('./routes/player');
 const { ConnectedClient } = require('./routes/connectedClient');
 const terrainLoader = require('./terrainLoader');
@@ -23,73 +24,81 @@ if (!INTER_APP_SECRET) {
   console.warn("INTER_APP_SECRET is not defined - duplicate login prevention will be disabled");
 }
 
+// Database connection for session management (auth database)
+const AUTH_DATABASE_URL = process.env.AUTH_DATABASE_URL;
+if (!AUTH_DATABASE_URL) {
+  throw new Error("AUTH_DATABASE_URL is not defined in environment variables");
+}
+
+const authDb = new Pool({ connectionString: AUTH_DATABASE_URL });
+
+// Get world name from environment or default
+const WORLD_NAME = process.env.WORLD_NAME || 'world1';
+
+// Clean up sessions for this world on startup
+async function cleanupStaleSessionsOnStartup() {
+  try {
+    const result = await authDb.query(
+      `DELETE FROM active_sessions WHERE world = $1`,
+      [WORLD_NAME]
+    );
+    console.log(`Cleaned up ${result.rowCount} stale sessions for ${WORLD_NAME} on startup`);
+  } catch (err) {
+    console.error('Failed to cleanup stale sessions:', err);
+  }
+}
+
+// Session management functions
+async function createSession(userId) {
+  try {
+    await authDb.query(
+      `INSERT INTO active_sessions (user_id, world, connection_state) 
+       VALUES ($1, $2, 0) 
+       ON CONFLICT (user_id) 
+       DO UPDATE SET world = $2, connection_state = 0, last_heartbeat = NOW()`,
+      [userId, WORLD_NAME]
+    );
+    console.log(`Session created for user ${userId} on ${WORLD_NAME}`);
+  } catch (err) {
+    console.error(`Failed to create session for user ${userId}:`, err);
+  }
+}
+
+async function updateSessionState(userId, state) {
+  try {
+    await authDb.query(
+      `UPDATE active_sessions SET connection_state = $1, last_heartbeat = NOW() WHERE user_id = $2`,
+      [state, userId]
+    );
+    console.log(`Session state updated for user ${userId} to ${state}`);
+  } catch (err) {
+    console.error(`Failed to update session state for user ${userId}:`, err);
+  }
+}
+
+async function deleteSession(userId) {
+  try {
+    await authDb.query(`DELETE FROM active_sessions WHERE user_id = $1`, [userId]);
+    console.log(`Session deleted for user ${userId}`);
+  } catch (err) {
+    console.error(`Failed to delete session for user ${userId}:`, err);
+  }
+}
+
 // Create Express app for HTTP endpoints
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Middleware to verify inter-service authentication
-function verifyInterAppAuth(req, res, next) {
-  // If INTER_APP_SECRET is not set, skip authentication (for development/testing)
-  if (!INTER_APP_SECRET) {
-    return next();
-  }
-  
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  
-  const token = authHeader.slice(7);
-  if (token !== INTER_APP_SECRET) {
-    return res.status(401).json({ error: 'Invalid auth token' });
-  }
-  
-  next();
-}
-
 // Health check endpoint (no auth required)
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
-    service: 'game-server-http-api',
+    service: 'game-server',
+    world: WORLD_NAME,
     timestamp: Date.now(),
     connectedClients: connectedClients.size
   });
-});
-
-// API endpoint to check if a user has an active session
-app.get('/api/check-session/:userId', verifyInterAppAuth, (req, res) => {
-  const userId = parseInt(req.params.userId);
-  
-  if (!connectedClients.has(userId)) {
-    return res.json({ connected: false });
-  }
-  
-  const client = connectedClients.get(userId);
-  
-  // Check if the client has an active WebSocket connection
-  if (client.isConnected()) {
-    return res.json({ 
-      connected: true,
-      lastHeartbeat: Date.now()
-    });
-  }
-  
-  // Check if they're in soft reconnect window (disconnected < 30s ago)
-  if (client.disconnectedAt) {
-    const timeSinceDisconnect = Date.now() - client.disconnectedAt;
-    if (timeSinceDisconnect < 30000) {
-      return res.json({
-        connected: false,
-        inReconnectWindow: true,
-        disconnectedAt: client.disconnectedAt
-      });
-    }
-  }
-  
-  // Client exists but is not connected and outside reconnect window
-  return res.json({ connected: false });
 });
 
 // Create HTTP server and attach both Express and WebSocket
@@ -100,7 +109,7 @@ const wss = new WebSocket.Server({ server });
 
 // Start the combined HTTP/WebSocket server
 // Don't specify a host to listen on all available interfaces (IPv4 and IPv6)
-server.listen(PORT, (err) => {
+server.listen(PORT, async (err) => {
   if (err) {
     console.error('Failed to start server:', err);
     process.exit(1);
@@ -109,6 +118,9 @@ server.listen(PORT, (err) => {
     console.log(`- WebSocket endpoint: ws://[hostname]:${PORT}`);
     console.log(`- HTTP API endpoint: http://[hostname]:${PORT}/api/*`);
     console.log(`Environment: INTER_APP_SECRET configured: ${!!INTER_APP_SECRET}`);
+    
+    // Clean up any stale sessions from previous runs
+    await cleanupStaleSessionsOnStartup();
   }
 });
 
@@ -116,13 +128,16 @@ server.on('error', (err) => {
   console.error('Server error:', err);
 });
 
-function onDisconnect(client) {
+async function onDisconnect(client) {
   if (!client) return;
 
   // Remove from terrain tracking
   terrainLoader.removePlayer(client.userId);
 
   connectedClients.delete(client.userId);
+
+  // Delete session from database
+  await deleteSession(client.userId);
 
   for (const otherClient of connectedClients.values()) {
     otherClient.send({ type: 'quitPlayer', id: client.userId });
@@ -133,19 +148,37 @@ function onDisconnect(client) {
   }
 }
 
-function heartbeatClients()
+async function heartbeatClients()
 {
   const now = Date.now();
+  
   for (const [userId, client] of connectedClients.entries()) {
     // Still connected, we have to check socket OPEN because we could have
     // lost the browser to a hard crash, network interrupt or tab closed
     // by task manager where we skip a .close web socket call.
-    if (client.ws && client.ws.readyState === WebSocket.OPEN) continue; 
+    if (client.ws && client.ws.readyState === WebSocket.OPEN) {
+      // Check if player has been idle too long (2 minutes = 120000ms)
+      if (client.lastActivity && (now - client.lastActivity) > 120000) {
+        console.log(`Forcing logout for idle user ${userId} (no activity for 2+ minutes)`);
+        await onDisconnect(client);
+        if (client.ws) {
+          client.ws.close();
+        }
+        continue;
+      }
+      continue;
+    }
 
     if (now - client.disconnectedAt > 30000) {
       console.log(`Cleaning up user ${userId} (disconnect timeout)`);
-      onDisconnect(client);
+      await onDisconnect(client);
     }
+  }
+
+  // Keep machine awake if there are active connections
+  if (connectedClients.size > 0) {
+    // This prevents Fly.io from scaling to zero by creating minimal activity
+    process.stdout.write('');
   }
 }
 
@@ -199,6 +232,11 @@ wss.on('connection', (ws) => {
     try {
       const data = JSON.parse(msg);
 
+      // Track activity for idle timeout (except for auth messages)
+      if (ws.client && data.type !== 'auth') {
+        ws.client.lastActivity = Date.now();
+      }
+
       if (!ws.client && data.type !== 'auth') 
       {
           console.warn("Unauthenticated client attempted action:", data.type);
@@ -213,10 +251,14 @@ wss.on('connection', (ws) => {
         if (!connectedClients.has(user_id)) {
           const player = new Player(user_id);
           const client = new ConnectedClient(user_id, username, ws, player);
+          client.lastActivity = Date.now(); // Initialize activity tracking
           connectedClients.set(user_id, client);
           ws.client = client;
 
           console.log(`Client connected in ${user_id}.`);
+
+          // Create session in database
+          await createSession(user_id);
 
           spawnNewPlayer(client);
 
@@ -228,8 +270,12 @@ wss.on('connection', (ws) => {
             client.ws = ws;
             ws.client = client;
             client.disconnectedAt = null; // Clear disconnect timestamp on reconnect
+            client.lastActivity = Date.now(); // Reset activity tracking on reconnect
 
             console.log(`Reattached user ${user_id} to new socket`);
+
+            // Update session state back to connected
+            await updateSessionState(user_id, 0);
 
             // Send spawn logic (client may have reconnected but their browser was closed. 
             // If this was just a blip disconnect the front end will ignore the spawn requests)
@@ -326,13 +372,16 @@ wss.on('connection', (ws) => {
 
 // --------------------------------------- WebSocket connection closed / lost ---------------------------------------
 
-  ws.on('close', () => {
+  ws.on('close', async () => {
     // If we closed the socket without using the quit function
     const client = ws.client;
     if (!client) return;
 
     console.log(`Client ${client.userId} lost connection.`);
     client.disconnectedAt = Date.now();
+
+    // Update session state to soft disconnect
+    await updateSessionState(client.userId, 1);
 
     // Don't delete yet - just mark as pending timeout
     client.ws = null;
@@ -341,7 +390,6 @@ wss.on('connection', (ws) => {
 
 // --------------------------------------- Main game tick ---------------------------------------
 setInterval(() => {
-  heartbeatClients();
 
   const snapshot = [];
 
@@ -381,6 +429,10 @@ setInterval(() => {
   }
 }, TICK_RATE);
 
+// Separate interval for client cleanup (30 seconds)
+setInterval(() => {
+  heartbeatClients();
+}, 30000);
 
 // --------------------------------------- Clean shutdown ---------------------------------------
 process.on('SIGTERM', () => {
