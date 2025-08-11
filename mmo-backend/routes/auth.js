@@ -18,15 +18,7 @@ module.exports = (db, JWT_SECRET, signToken) => {
 
       const userId = userResult.rows[0].id;
 
-      // Create a matching player via HTTP to game server
-      await fetch("https://mmogame-api.fly.dev/players", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.INTER_APP_SECRET}`,
-        },
-        body: JSON.stringify({ user_id: userId }),
-      });
+      // Player will be created automatically when they first connect to game server
 
       const token = signToken({ id: userId, username });
       return res.json({ token, status: "ok" });

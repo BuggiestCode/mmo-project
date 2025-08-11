@@ -32,6 +32,14 @@ if (!AUTH_DATABASE_URL) {
 
 const authDb = new Pool({ connectionString: AUTH_DATABASE_URL });
 
+// Database connection for game data (players table)
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  throw new Error("DATABASE_URL is not defined in environment variables");
+}
+
+const gameDb = new Pool({ connectionString: DATABASE_URL });
+
 // Get world name from environment or default
 const WORLD_NAME = process.env.WORLD_NAME || 'world1';
 
@@ -45,6 +53,40 @@ async function cleanupStaleSessionsOnStartup() {
     console.log(`Cleaned up ${result.rowCount} stale sessions for ${WORLD_NAME} on startup`);
   } catch (err) {
     console.error('Failed to cleanup stale sessions:', err);
+  }
+}
+
+// Player database functions
+async function loadOrCreatePlayer(userId) {
+  try {
+    // Try to load existing player
+    const result = await gameDb.query(
+      `SELECT user_id, x, y, facing FROM players WHERE user_id = $1`,
+      [userId]
+    );
+    
+    if (result.rows.length > 0) {
+      const data = result.rows[0];
+      console.log(`Loaded existing player ${userId} at position (${data.x}, ${data.y})`);
+      return new Player(data.user_id, data.x, data.y);
+    } else {
+      // Create new player entry with default spawn position
+      const defaultX = 0;
+      const defaultY = 0;
+      const defaultFacing = 0;
+      
+      await gameDb.query(
+        `INSERT INTO players (user_id, x, y, facing) VALUES ($1, $2, $3, $4)`,
+        [userId, defaultX, defaultY, defaultFacing]
+      );
+      
+      console.log(`Created new player ${userId} at spawn position (${defaultX}, ${defaultY})`);
+      return new Player(userId, defaultX, defaultY);
+    }
+  } catch (err) {
+    console.error(`Failed to load/create player ${userId}:`, err);
+    // Return default player on error
+    return new Player(userId, 0, 0);
   }
 }
 
@@ -130,6 +172,19 @@ server.on('error', (err) => {
 
 async function onDisconnect(client) {
   if (!client) return;
+
+  // Save player position to database before disconnecting
+  if (client.player) {
+    try {
+      await gameDb.query(
+        `UPDATE players SET x = $1, y = $2, facing = $3 WHERE user_id = $4`,
+        [client.player.x, client.player.y, client.player.facing, client.userId]
+      );
+      console.log(`Saved player ${client.userId} position (${client.player.x}, ${client.player.y})`);
+    } catch (err) {
+      console.error(`Failed to save player ${client.userId} position:`, err);
+    }
+  }
 
   // Remove from terrain tracking
   terrainLoader.removePlayer(client.userId);
@@ -249,7 +304,8 @@ wss.on('connection', (ws) => {
         const username = decoded.username;
 
         if (!connectedClients.has(user_id)) {
-          const player = new Player(user_id);
+          // Load or create player from database
+          const player = await loadOrCreatePlayer(user_id);
           const client = new ConnectedClient(user_id, username, ws, player);
           client.lastActivity = Date.now(); // Initialize activity tracking
           connectedClients.set(user_id, client);
