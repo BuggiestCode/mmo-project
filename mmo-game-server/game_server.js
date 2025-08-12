@@ -19,11 +19,6 @@ if (!JWT_SECRET) {
   throw new Error("JWT_SECRET is not defined in environment variables");
 }
 
-const INTER_APP_SECRET = process.env.INTER_APP_SECRET;
-if (!INTER_APP_SECRET) {
-  console.warn("INTER_APP_SECRET is not defined - duplicate login prevention will be disabled");
-}
-
 // Database connection for session management (auth database)
 const AUTH_DATABASE_URL = process.env.AUTH_DATABASE_URL;
 if (!AUTH_DATABASE_URL) {
@@ -33,12 +28,12 @@ if (!AUTH_DATABASE_URL) {
 const authDb = new Pool({ connectionString: AUTH_DATABASE_URL });
 
 // Database connection for game data (players table)
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  throw new Error("DATABASE_URL is not defined in environment variables");
+const GAME_DATABASE_URL = process.env.GAME_DATABASE_URL;
+if (!GAME_DATABASE_URL) {
+  throw new Error("GAME_DATABASE_URL is not defined in environment variables");
 }
 
-const gameDb = new Pool({ connectionString: DATABASE_URL });
+const gameDb = new Pool({ connectionString: GAME_DATABASE_URL });
 
 // Get world name from environment or default
 const WORLD_NAME = process.env.WORLD_NAME || 'world1';
@@ -159,7 +154,6 @@ server.listen(PORT, async (err) => {
     console.log(`Game server running on port ${PORT} (all interfaces)`);
     console.log(`- WebSocket endpoint: ws://[hostname]:${PORT}`);
     console.log(`- HTTP API endpoint: http://[hostname]:${PORT}/api/*`);
-    console.log(`Environment: INTER_APP_SECRET configured: ${!!INTER_APP_SECRET}`);
     
     // Clean up any stale sessions from previous runs
     await cleanupStaleSessionsOnStartup();

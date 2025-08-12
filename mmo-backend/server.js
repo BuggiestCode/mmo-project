@@ -8,8 +8,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// DB connection
-const db = new Pool({ connectionString: process.env.DATABASE_URL });
+// DB connection - using AUTH_DATABASE_URL for clarity (this is the auth database)
+const db = new Pool({ connectionString: process.env.AUTH_DATABASE_URL });
 
 // JWT setup
 const JWT_SECRET = process.env.JWT_SECRET;
