@@ -48,7 +48,7 @@ psql -h localhost -p 5455 -U postgres -d mmo_game < mmo-db/game_schema.sql
 cd mmo-backend
 
 # Create the app
-fly apps create mmo-auth-frontend-staging
+fly apps create mmo-auth-frontend-staging --region lhr
 
 # Set secrets (JWT must be shared across all apps in the same environment)
 fly secrets set \
@@ -56,16 +56,15 @@ fly secrets set \
   JWT_SECRET=[GENERATE_A_SECURE_SECRET] \
   -a mmo-auth-frontend-staging
 
-# Deploy (Use tools in Unity)
+# Deploy (Use tools in Unity but for the sake of keeping track)
+fly deploy -a mmo-auth-frontend-staging
 ```
 
 ### 3. Create World Server (Staging)
 
 ```bash
-cd mmo-game-server
-
 # For each world (e.g., world1, world2, etc.)
-fly apps create mmo-world1-staging
+fly apps create mmo-world1-staging --region lhr
 
 # Set secrets for world1
 fly secrets set \
@@ -75,7 +74,58 @@ fly secrets set \
   WORLD_NAME=world1-staging \
   -a mmo-world1-staging
 
-# Deploy (Use tools in Unity)
+# Deploy
+fly deploy -a mmo-world1-staging
+```
+
+## Adding a New World Server
+
+### Script: `create-world.sh`
+
+```bash
+#!/bin/bash
+
+# Usage: ./create-world.sh <world-number> <environment>
+# Example: ./create-world.sh 2 staging
+
+WORLD_NUM=$1
+ENV=$2
+
+if [ "$ENV" = "staging" ]; then
+    DB_HOST="mmo-db-staging"
+    AUTH_FRONTEND="mmo-auth-frontend-staging"
+    DB_PASSWORD="[STAGING_DB_PASSWORD]"
+    JWT_SECRET="[STAGING_JWT_SECRET]"
+elif [ "$ENV" = "prod" ]; then
+    DB_HOST="mmo-db-prod"
+    AUTH_FRONTEND="mmo-auth-frontend-prod"
+    DB_PASSWORD="[PROD_DB_PASSWORD]"
+    JWT_SECRET="[PROD_JWT_SECRET]"
+else
+    echo "Invalid environment. Use 'staging' or 'prod'"
+    exit 1
+fi
+
+APP_NAME="mmo-world${WORLD_NUM}-${ENV}"
+WORLD_NAME="world${WORLD_NUM}-${ENV}"
+
+echo "Creating world server: $APP_NAME"
+
+# Create app
+fly apps create $APP_NAME --region lhr
+
+# Set secrets
+fly secrets set \
+  AUTH_DATABASE_URL=postgres://postgres:${DB_PASSWORD}@${DB_HOST}.flycast:5432/mmo_auth \
+  GAME_DATABASE_URL=postgres://postgres:${DB_PASSWORD}@${DB_HOST}.flycast:5432/mmo_game \
+  JWT_SECRET=${JWT_SECRET} \
+  WORLD_NAME=${WORLD_NAME} \
+  -a $APP_NAME
+
+# Deploy
+fly deploy -a $APP_NAME
+
+echo "World server $APP_NAME created and deployed!"
 ```
 
 ## Environment Variables Reference
