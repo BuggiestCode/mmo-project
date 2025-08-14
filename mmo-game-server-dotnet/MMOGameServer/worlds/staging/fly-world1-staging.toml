@@ -1,10 +1,13 @@
-# fly.toml app configuration file for mmo-world1-staging
+# fly.toml app configuration file for .NET game server
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
 app = 'mmo-world1-staging'
 primary_region = 'yyz'
+
+[env]
+  ASPNETCORE_URLS = "http://+:8080"
 
 [http_service]
   internal_port = 8080

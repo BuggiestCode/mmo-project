@@ -3,11 +3,8 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'mmo-world-dotnet-test-staging'
+app = 'mmo-world1-production'
 primary_region = 'yyz'
-
-[build]
-  dockerfile = "Dockerfile"
 
 [env]
   ASPNETCORE_URLS = "http://+:8080"
