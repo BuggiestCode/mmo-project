@@ -11,6 +11,9 @@ public class ConnectedClient
     public Player? Player { get; set; }
     public bool IsAuthenticated { get; set; }
     public DateTime ConnectedAt { get; set; }
+    public DateTime? DisconnectedAt { get; set; }
+    public DateTime? LastActivity { get; set; }
+    public string? Username { get; set; }
     
     public ConnectedClient(WebSocket webSocket)
     {
@@ -18,7 +21,10 @@ public class ConnectedClient
         WebSocket = webSocket;
         IsAuthenticated = false;
         ConnectedAt = DateTime.UtcNow;
+        LastActivity = DateTime.UtcNow;
     }
+    
+    public bool IsConnected() => WebSocket?.State == WebSocketState.Open;
     
     public async Task SendMessageAsync(object message)
     {

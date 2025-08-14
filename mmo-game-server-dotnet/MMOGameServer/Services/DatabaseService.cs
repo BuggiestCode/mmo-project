@@ -135,4 +135,48 @@ public class DatabaseService
             Console.WriteLine($"Failed to remove session: {ex.Message}");
         }
     }
+    
+    public async Task SavePlayerPositionAsync(int userId, float x, float y, int facing)
+    {
+        try
+        {
+            using var conn = new NpgsqlConnection(_gameConnectionString);
+            await conn.OpenAsync();
+            
+            using var cmd = new NpgsqlCommand(
+                "UPDATE players SET x = @x, y = @y, facing = @facing WHERE user_id = @userId", conn);
+            cmd.Parameters.AddWithValue("userId", userId);
+            cmd.Parameters.AddWithValue("x", (int)x);
+            cmd.Parameters.AddWithValue("y", (int)y);
+            cmd.Parameters.AddWithValue("facing", facing);
+            
+            await cmd.ExecuteNonQueryAsync();
+            Console.WriteLine($"Saved player {userId} position ({x}, {y})");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to save player {userId} position: {ex.Message}");
+        }
+    }
+    
+    public async Task UpdateSessionStateAsync(int userId, int state)
+    {
+        try
+        {
+            using var conn = new NpgsqlConnection(_authConnectionString);
+            await conn.OpenAsync();
+            
+            using var cmd = new NpgsqlCommand(
+                "UPDATE active_sessions SET connection_state = @state, last_heartbeat = NOW() WHERE user_id = @userId", conn);
+            cmd.Parameters.AddWithValue("userId", userId);
+            cmd.Parameters.AddWithValue("state", state);
+            
+            await cmd.ExecuteNonQueryAsync();
+            Console.WriteLine($"Session state updated for user {userId} to {state}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to update session state for user {userId}: {ex.Message}");
+        }
+    }
 }

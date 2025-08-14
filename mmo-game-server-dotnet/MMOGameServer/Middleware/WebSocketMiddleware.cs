@@ -12,13 +12,25 @@ public class WebSocketMiddleware
     private readonly RequestDelegate _next;
     private readonly GameWorldService _gameWorld;
     private readonly DatabaseService _database;
+    private readonly TerrainService _terrain;
+    private readonly PathfindingService _pathfinding;
     private readonly JwtSecurityTokenHandler _tokenHandler;
+    private readonly ILogger<WebSocketMiddleware> _logger;
     
-    public WebSocketMiddleware(RequestDelegate next, GameWorldService gameWorld, DatabaseService database)
+    public WebSocketMiddleware(
+        RequestDelegate next, 
+        GameWorldService gameWorld, 
+        DatabaseService database,
+        TerrainService terrain,
+        PathfindingService pathfinding,
+        ILogger<WebSocketMiddleware> logger)
     {
         _next = next;
         _gameWorld = gameWorld;
         _database = database;
+        _terrain = terrain;
+        _pathfinding = pathfinding;
+        _logger = logger;
         _tokenHandler = new JwtSecurityTokenHandler();
     }
     
@@ -77,7 +89,14 @@ public class WebSocketMiddleware
                 if (receiveResult.MessageType == WebSocketMessageType.Text)
                 {
                     var message = Encoding.UTF8.GetString(buffer, 0, receiveResult.Count);
-                    await ProcessMessageAsync(client, message);
+                    
+                    // Update activity tracking for non-auth messages
+                    if (client.IsAuthenticated)
+                    {
+                        client.LastActivity = DateTime.UtcNow;
+                    }
+                    
+                    await ProcessMessageAsync(client, message, webSocket);
                 }
                 
                 receiveResult = await webSocket.ReceiveAsync(
@@ -90,18 +109,11 @@ public class WebSocketMiddleware
         }
         finally
         {
-            await _gameWorld.RemoveClientAsync(client.Id);
-            if (webSocket.State == WebSocketState.Open)
-            {
-                await webSocket.CloseAsync(
-                    WebSocketCloseStatus.NormalClosure, 
-                    "Connection closed", 
-                    CancellationToken.None);
-            }
+            await HandleDisconnectAsync(client);
         }
     }
     
-    private async Task ProcessMessageAsync(ConnectedClient client, string message)
+    private async Task ProcessMessageAsync(ConnectedClient client, string message, WebSocket webSocket)
     {
         try
         {
@@ -126,9 +138,27 @@ public class WebSocketMiddleware
                 case "move":
                     if (client.IsAuthenticated)
                     {
-                        Console.WriteLine($"Player {client.Player?.UserId} requested move");
-                        // Just log for now, implement actual movement later
+                        await HandleMoveAsync(client, root);
                     }
+                    break;
+                    
+                case "chat":
+                    if (client.IsAuthenticated)
+                    {
+                        await HandleChatAsync(client, root);
+                    }
+                    break;
+                    
+                case "quit":
+                case "logout":
+                    if (client.IsAuthenticated && client.Player != null)
+                    {
+                        Console.WriteLine($"Player {client.Player.UserId} logging out");
+                        await _database.RemoveSessionAsync(client.Player.UserId);
+                        client.IsAuthenticated = false;
+                    }
+                    // Close the WebSocket connection
+                    await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Logout", CancellationToken.None);
                     break;
                     
                 default:
@@ -146,8 +176,11 @@ public class WebSocketMiddleware
     {
         try
         {
+            Console.WriteLine("Starting authorization process");
+            
             if (!message.TryGetProperty("token", out var tokenElement))
             {
+                Console.WriteLine("No token in auth message");
                 await client.SendMessageAsync(new { type = "auth", success = false, error = "No token provided" });
                 return;
             }
@@ -155,37 +188,97 @@ public class WebSocketMiddleware
             var token = tokenElement.GetString();
             if (string.IsNullOrEmpty(token))
             {
+                Console.WriteLine("Empty token in auth message");
                 await client.SendMessageAsync(new { type = "auth", success = false, error = "Invalid token" });
                 return;
             }
             
+            Console.WriteLine("Parsing JWT token");
             // Parse JWT token
             var jwtToken = _tokenHandler.ReadJwtToken(token);
-            var userIdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "userId");
+            var userIdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "id");
             
             if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out var userId))
             {
+                Console.WriteLine($"Invalid userId in token. Claims: {string.Join(", ", jwtToken.Claims.Select(c => c.Type))}");
                 await client.SendMessageAsync(new { type = "auth", success = false, error = "Invalid user ID in token" });
                 return;
             }
             
+            // Check for existing connection
+            var existingClient = _gameWorld.GetClientByUserId(userId);
+            if (existingClient != null)
+            {
+                if (existingClient.IsConnected())
+                {
+                    // Duplicate login attempt
+                    _logger.LogWarning($"User {userId} already has a live connection");
+                    await client.SendMessageAsync(new 
+                    { 
+                        type = "error", 
+                        code = "ALREADY_LOGGED_IN",
+                        message = "User already has an active session on another connection"
+                    });
+                    
+                    // Close after short delay
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(100);
+                        if (client.WebSocket?.State == WebSocketState.Open)
+                        {
+                            await client.WebSocket.CloseAsync(
+                                WebSocketCloseStatus.PolicyViolation,
+                                "Already logged in",
+                                CancellationToken.None);
+                        }
+                    });
+                    return;
+                }
+                else
+                {
+                    // Soft reconnect within time window
+                    existingClient.WebSocket = client.WebSocket;
+                    existingClient.DisconnectedAt = null;
+                    existingClient.LastActivity = DateTime.UtcNow;
+                    
+                    _logger.LogInformation($"Reattached user {userId} to new socket");
+                    await _database.UpdateSessionStateAsync(userId, 0);
+                    
+                    // Transfer client reference and remove new client
+                    _gameWorld.RemoveClientAsync(client.Id).Wait();
+                    
+                    // Send spawn logic
+                    await SpawnPlayerAsync(existingClient);
+                    return;
+                }
+            }
+            
+            Console.WriteLine($"Creating session for user {userId}");
             // Create session
             if (!await _database.CreateSessionAsync(userId))
             {
+                Console.WriteLine("Failed to create session in database");
                 await client.SendMessageAsync(new { type = "auth", success = false, error = "Failed to create session" });
                 return;
             }
             
+            Console.WriteLine($"Loading player data for user {userId}");
             // Load or create player
             var player = await _database.LoadOrCreatePlayerAsync(userId);
             if (player == null)
             {
+                Console.WriteLine("Failed to load/create player");
                 await client.SendMessageAsync(new { type = "auth", success = false, error = "Failed to load player" });
                 return;
             }
             
+            // Get username from token
+            var usernameClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "username");
+            var username = usernameClaim?.Value ?? $"Player{userId}";
+            
             // Set up client
             client.Player = player;
+            client.Username = username;
             client.IsAuthenticated = true;
             
             // Send success response
@@ -197,12 +290,173 @@ public class WebSocketMiddleware
                 position = new { x = player.X, y = player.Y }
             });
             
-            Console.WriteLine($"Player {userId} authorized successfully");
+            Console.WriteLine($"Player {userId} ({username}) authorized successfully");
+            
+            // Spawn player in world
+            await SpawnPlayerAsync(client);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Authorization error: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
             await client.SendMessageAsync(new { type = "auth", success = false, error = "Authorization failed" });
+        }
+    }
+    
+    private async Task HandleMoveAsync(ConnectedClient client, JsonElement message)
+    {
+        if (client.Player == null) return;
+        
+        if (!message.TryGetProperty("dx", out var dxElement) || 
+            !message.TryGetProperty("dy", out var dyElement))
+        {
+            _logger.LogWarning("Move message missing dx or dy");
+            return;
+        }
+        
+        if (!dxElement.TryGetSingle(out var targetX) || !dyElement.TryGetSingle(out var targetY))
+        {
+            _logger.LogWarning($"Invalid move coordinates from player {client.Player.UserId}");
+            return;
+        }
+        
+        var startPos = client.Player.GetPathfindingStartPosition();
+        _logger.LogInformation($"Player {client.Player.UserId} requesting move from ({startPos.x}, {startPos.y}) to ({targetX}, {targetY})");
+        
+        // Calculate path using pathfinding service
+        var path = await _pathfinding.FindPathAsync(startPos.x, startPos.y, targetX, targetY);
+        
+        if (path != null && path.Count > 0)
+        {
+            client.Player.SetPath(path);
+            
+            await client.SendMessageAsync(new
+            {
+                type = "pathSet",
+                path = path.Select(p => new { x = p.x, y = p.y }),
+                startPos = new { x = startPos.x, y = startPos.y }
+            });
+            
+            _logger.LogInformation($"Player {client.Player.UserId} path set: {path.Count} steps");
+        }
+        else
+        {
+            _logger.LogInformation($"No valid path found for player {client.Player.UserId} to ({targetX}, {targetY})");
+            await client.SendMessageAsync(new
+            {
+                type = "pathFailed",
+                target = new { x = targetX, y = targetY },
+                reason = "No valid path"
+            });
+        }
+    }
+    
+    private async Task HandleChatAsync(ConnectedClient client, JsonElement message)
+    {
+        if (!message.TryGetProperty("chat_contents", out var chatElement))
+        {
+            return;
+        }
+        
+        var chatContents = chatElement.GetString();
+        if (string.IsNullOrEmpty(chatContents)) return;
+        
+        var timestamp = message.TryGetProperty("timestamp", out var tsElement) 
+            ? tsElement.GetInt64() 
+            : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        
+        _logger.LogInformation($"Chat from {client.Username}: {chatContents}");
+        
+        // Broadcast to all other authenticated clients
+        var chatMessage = new
+        {
+            type = "chat",
+            sender = client.Username,
+            chat_contents = chatContents,
+            timestamp = timestamp
+        };
+        
+        await _gameWorld.BroadcastToAllAsync(chatMessage, client.Id);
+    }
+    
+    private async Task SpawnPlayerAsync(ConnectedClient client)
+    {
+        if (client.Player == null) return;
+        
+        // Ensure spawn chunk is loaded
+        var chunkReady = _terrain.UpdatePlayerChunk(client.Player.UserId, client.Player.X, client.Player.Y);
+        if (!chunkReady)
+        {
+            _logger.LogError($"Failed to load spawn chunk for player {client.Player.UserId}");
+            return;
+        }
+        
+        // Build spawn message
+        var spawnMessage = new
+        {
+            type = "spawnPlayer",
+            player = new
+            {
+                id = client.Player.UserId.ToString(),
+                username = client.Username,
+                xPos = client.Player.X,
+                yPos = client.Player.Y
+            }
+        };
+        
+        // Send to all clients (including self)
+        await _gameWorld.BroadcastToAllAsync(spawnMessage);
+        
+        // Send other players to the new client
+        var otherPlayers = _gameWorld.GetAuthenticatedClients()
+            .Where(c => c.Player != null && c.Player.UserId != client.Player.UserId)
+            .Select(c => new
+            {
+                id = c.Player!.UserId.ToString(),
+                username = c.Username,
+                xPos = c.Player.X,
+                yPos = c.Player.Y
+            })
+            .ToList();
+        
+        if (otherPlayers.Any())
+        {
+            await client.SendMessageAsync(new
+            {
+                type = "spawnOtherPlayers",
+                players = otherPlayers
+            });
+        }
+    }
+    
+    private async Task HandleDisconnectAsync(ConnectedClient client)
+    {
+        if (client.Player != null)
+        {
+            // Save player position
+            await _database.SavePlayerPositionAsync(
+                client.Player.UserId,
+                client.Player.X,
+                client.Player.Y,
+                client.Player.Facing);
+            
+            // Remove from terrain tracking
+            _terrain.RemovePlayer(client.Player.UserId);
+            
+            // Broadcast quit to other players
+            await _gameWorld.BroadcastToAllAsync(
+                new { type = "quitPlayer", id = client.Player.UserId },
+                client.Id);
+        }
+        
+        await _gameWorld.RemoveClientAsync(client.Id);
+        
+        if (client.WebSocket?.State == WebSocketState.Open)
+        {
+            await client.WebSocket.CloseAsync(
+                WebSocketCloseStatus.NormalClosure,
+                "Connection closed",
+                CancellationToken.None);
         }
     }
 }

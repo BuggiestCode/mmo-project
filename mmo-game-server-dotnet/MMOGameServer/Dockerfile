@@ -15,6 +15,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 COPY --from=publish /app/publish .
 
+# Copy terrain data
+COPY terrain/ ./terrain/
+
 # Expose port (Fly.io will override this with PORT env var)
 EXPOSE 8080
 

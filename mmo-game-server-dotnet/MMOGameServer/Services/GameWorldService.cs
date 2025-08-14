@@ -43,6 +43,16 @@ public class GameWorldService
         return _clients.Values.Where(c => c.IsAuthenticated);
     }
     
+    public IEnumerable<ConnectedClient> GetAllClients()
+    {
+        return _clients.Values;
+    }
+    
+    public ConnectedClient? GetClientByUserId(int userId)
+    {
+        return _clients.Values.FirstOrDefault(c => c.Player?.UserId == userId);
+    }
+    
     public async Task BroadcastToAllAsync(object message, string? excludeClientId = null)
     {
         var tasks = new List<Task>();
