@@ -96,23 +96,109 @@ public class DatabaseService
             using var conn = new NpgsqlConnection(_authConnectionString);
             await conn.OpenAsync();
             
-            using var cmd = new NpgsqlCommand(@"
-                INSERT INTO active_sessions (user_id, world, connection_state, last_heartbeat) 
-                VALUES (@userId, @world, 0, NOW()) 
-                ON CONFLICT (user_id) 
-                DO UPDATE SET world = @world, connection_state = 0, last_heartbeat = NOW()", conn);
+            // Use a transaction for atomic session creation with proper conflict detection
+            using var transaction = await conn.BeginTransactionAsync();
             
-            cmd.Parameters.AddWithValue("userId", userId);
-            cmd.Parameters.AddWithValue("world", _worldName);
-            
-            await cmd.ExecuteNonQueryAsync();
-            Console.WriteLine($"Session created for user {userId} on {_worldName}");
-            return true;
+            try
+            {
+                // First, check if there's already an active session for this user
+                using var checkCmd = new NpgsqlCommand(@"
+                    SELECT user_id, world, connection_state, last_heartbeat 
+                    FROM active_sessions 
+                    WHERE user_id = @userId 
+                    FOR UPDATE", conn, transaction);
+                checkCmd.Parameters.AddWithValue("userId", userId);
+                
+                using var reader = await checkCmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    var existingWorld = reader.GetString(1);  // world
+                    var connectionState = reader.GetInt32(2); // connection_state
+                    var lastHeartbeat = reader.GetDateTime(3); // last_heartbeat
+                    
+                    await reader.CloseAsync();
+                    
+                    // Check if session is recent and active (within last 30 seconds for soft disconnect window)
+                    var timeSinceHeartbeat = DateTime.UtcNow - lastHeartbeat;
+                    if (connectionState == 0 || timeSinceHeartbeat.TotalSeconds < 30)
+                    {
+                        Console.WriteLine($"User {userId} already has active session on {existingWorld} (state: {connectionState}, heartbeat: {timeSinceHeartbeat.TotalSeconds}s ago)");
+                        await transaction.RollbackAsync();
+                        return false; // Session creation denied - user already logged in
+                    }
+                    
+                    // Old session exists but is stale, update it
+                    using var updateCmd = new NpgsqlCommand(@"
+                        UPDATE active_sessions 
+                        SET world = @world, connection_state = 0, last_heartbeat = NOW() 
+                        WHERE user_id = @userId", conn, transaction);
+                    updateCmd.Parameters.AddWithValue("userId", userId);
+                    updateCmd.Parameters.AddWithValue("world", _worldName);
+                    await updateCmd.ExecuteNonQueryAsync();
+                }
+                else
+                {
+                    await reader.CloseAsync();
+                    
+                    // No existing session, create new one
+                    using var insertCmd = new NpgsqlCommand(@"
+                        INSERT INTO active_sessions (user_id, world, connection_state, last_heartbeat) 
+                        VALUES (@userId, @world, 0, NOW())", conn, transaction);
+                    insertCmd.Parameters.AddWithValue("userId", userId);
+                    insertCmd.Parameters.AddWithValue("world", _worldName);
+                    await insertCmd.ExecuteNonQueryAsync();
+                }
+                
+                await transaction.CommitAsync();
+                Console.WriteLine($"Session created/updated for user {userId} on {_worldName}");
+                return true;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to create session: {ex.Message}");
             return false;
+        }
+    }
+    
+    public async Task<(bool exists, bool isActive, string? world)> CheckExistingSessionAsync(int userId)
+    {
+        try
+        {
+            using var conn = new NpgsqlConnection(_authConnectionString);
+            await conn.OpenAsync();
+            
+            using var cmd = new NpgsqlCommand(@"
+                SELECT world, connection_state, last_heartbeat 
+                FROM active_sessions 
+                WHERE user_id = @userId", conn);
+            cmd.Parameters.AddWithValue("userId", userId);
+            
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                var world = reader.GetString(0);      // world
+                var connectionState = reader.GetInt32(1); // connection_state
+                var lastHeartbeat = reader.GetDateTime(2); // last_heartbeat
+                
+                // Session is active if connection_state is 0 or heartbeat is within 30 seconds
+                var timeSinceHeartbeat = DateTime.UtcNow - lastHeartbeat;
+                var isActive = connectionState == 0 || timeSinceHeartbeat.TotalSeconds < 30;
+                
+                return (true, isActive, world);
+            }
+            
+            return (false, false, null);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to check existing session: {ex.Message}");
+            return (false, false, null);
         }
     }
     

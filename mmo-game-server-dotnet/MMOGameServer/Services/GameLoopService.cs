@@ -133,8 +133,46 @@ public class GameLoopService : BackgroundService
             var now = DateTime.UtcNow;
             var clientsToRemove = new List<ConnectedClient>();
             
+            // CRITICAL: Check for duplicate users and force disconnect the newer connection
+            var duplicates = _gameWorld.GetDuplicateUsers();
+            if (duplicates.Any())
+            {
+                _logger.LogError("DUPLICATE USERS DETECTED! Cleaning up newer connections.");
+                
+                var groupedDuplicates = duplicates.GroupBy(c => c.Player!.UserId);
+                foreach (var group in groupedDuplicates)
+                {
+                    var userId = group.Key;
+                    var duplicateClients = group.OrderBy(c => c.LastActivity ?? DateTime.MinValue).ToList();
+                    
+                    // Keep the oldest connection, remove all others
+                    for (int i = 1; i < duplicateClients.Count; i++)
+                    {
+                        var clientToRemove = duplicateClients[i];
+                        _logger.LogError($"REMOVING DUPLICATE CLIENT {clientToRemove.Id} for user {userId}");
+                        
+                        // Send error message before disconnect
+                        try
+                        {
+                            await clientToRemove.SendMessageAsync(new 
+                            { 
+                                type = "error", 
+                                code = "DUPLICATE_LOGIN_DETECTED",
+                                message = "Duplicate login detected. This connection will be terminated."
+                            });
+                        }
+                        catch { }
+                        
+                        clientsToRemove.Add(clientToRemove);
+                    }
+                }
+            }
+            
             foreach (var client in _gameWorld.GetAllClients())
             {
+                // Skip if already marked for removal
+                if (clientsToRemove.Contains(client)) continue;
+                
                 // Check for idle timeout (2 minutes)
                 if (client.LastActivity.HasValue && 
                     (now - client.LastActivity.Value).TotalMilliseconds > 120000)

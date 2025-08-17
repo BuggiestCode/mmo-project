@@ -212,19 +212,46 @@ public class WebSocketMiddleware
                 return;
             }
             
-            // Check for existing connection
+            // FIRST: Check database for existing active sessions (primary protection)
+            var (sessionExists, isActive, existingWorld) = await _database.CheckExistingSessionAsync(userId);
+            if (sessionExists && isActive)
+            {
+                _logger.LogWarning($"User {userId} already has active session on {existingWorld}");
+                await client.SendMessageAsync(new 
+                { 
+                    type = "error", 
+                    code = "ALREADY_LOGGED_IN",
+                    message = $"User already has an active session on {existingWorld}"
+                });
+                
+                // Close after short delay to allow message delivery
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(100);
+                    if (client.WebSocket?.State == WebSocketState.Open)
+                    {
+                        await client.WebSocket.CloseAsync(
+                            WebSocketCloseStatus.PolicyViolation,
+                            "Already logged in",
+                            CancellationToken.None);
+                    }
+                });
+                return;
+            }
+            
+            // SECOND: Check for existing in-memory connection (secondary protection)
             var existingClient = _gameWorld.GetClientByUserId(userId);
             if (existingClient != null)
             {
                 if (existingClient.IsConnected())
                 {
-                    // Duplicate login attempt
-                    _logger.LogWarning($"User {userId} already has a live connection");
+                    // This should be rare now due to database check, but provides extra safety
+                    _logger.LogWarning($"User {userId} has in-memory connection despite database check");
                     await client.SendMessageAsync(new 
                     { 
                         type = "error", 
                         code = "ALREADY_LOGGED_IN",
-                        message = "User already has an active session on another connection"
+                        message = "User already has an active session"
                     });
                     
                     // Close after short delay
@@ -257,30 +284,33 @@ public class WebSocketMiddleware
                     // Update session state to connected
                     await _database.UpdateSessionStateAsync(userId, 0);
                     
-                    // Don't remove the temporary client from GameWorld yet
-                    // Instead, copy the existing player data to the temporary client
-                    // so the current WebSocket message loop can continue properly
+                    // Copy the existing player data to the temporary client
                     client.Player = existingClient.Player;
                     client.Username = existingClient.Username;
                     client.IsAuthenticated = true;
                     client.DisconnectedAt = null;
                     client.LastActivity = DateTime.UtcNow;
                     
-                    // Now remove the old disconnected client
+                    // Remove the old disconnected client
                     await _gameWorld.RemoveClientAsync(existingClient.Id);
                     
-                    // Send spawn logic using the current client (which now has the player data)
+                    // Send spawn logic using the current client
                     await SpawnPlayerAsync(client);
                     return;
                 }
             }
             
             Console.WriteLine($"Creating session for user {userId}");
-            // Create session
+            // THIRD: Attempt to create session with database-level locking
             if (!await _database.CreateSessionAsync(userId))
             {
-                Console.WriteLine("Failed to create session in database");
-                await client.SendMessageAsync(new { type = "auth", success = false, error = "Failed to create session" });
+                Console.WriteLine("Failed to create session - likely concurrent login detected");
+                await client.SendMessageAsync(new 
+                { 
+                    type = "error", 
+                    code = "ALREADY_LOGGED_IN",
+                    message = "User login detected on another connection. Please try again."
+                });
                 return;
             }
             
@@ -298,6 +328,20 @@ public class WebSocketMiddleware
             var usernameClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == "username");
             var username = usernameClaim?.Value ?? $"Player{userId}";
             
+            // FOURTH: Final validation before setting up client
+            if (!_gameWorld.ValidateUniqueUser(userId, client.Id))
+            {
+                Console.WriteLine($"CRITICAL: Duplicate user validation failed for {userId}");
+                await _database.RemoveSessionAsync(userId);
+                await client.SendMessageAsync(new 
+                { 
+                    type = "error", 
+                    code = "ALREADY_LOGGED_IN",
+                    message = "Duplicate user detected. Session terminated for safety."
+                });
+                return;
+            }
+            
             // Set up client
             client.Player = player;
             client.Username = username;
@@ -305,6 +349,23 @@ public class WebSocketMiddleware
             
             // Cancel authentication timeout since we're now authenticated
             client.AuthTimeoutCts?.Cancel();
+            
+            // FIFTH: Post-authentication duplicate check
+            if (!_gameWorld.ValidateUniqueUser(userId, client.Id))
+            {
+                Console.WriteLine($"CRITICAL: Post-auth duplicate user detected for {userId} - rolling back");
+                client.IsAuthenticated = false;
+                client.Player = null;
+                client.Username = null;
+                await _database.RemoveSessionAsync(userId);
+                await client.SendMessageAsync(new 
+                { 
+                    type = "error", 
+                    code = "ALREADY_LOGGED_IN",
+                    message = "Duplicate user detected after authentication. Session terminated."
+                });
+                return;
+            }
             
             // Send success response
             await client.SendMessageAsync(new 

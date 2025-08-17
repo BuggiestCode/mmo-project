@@ -20,6 +20,44 @@ public class GameWorldService
         Console.WriteLine($"Client {client.Id} connected. Total clients: {_clients.Count}");
     }
     
+    public bool ValidateUniqueUser(int userId, string excludeClientId = "")
+    {
+        // Check for any other authenticated clients with the same userId
+        var duplicateClient = _clients.Values.FirstOrDefault(c => 
+            c.Id != excludeClientId && 
+            c.IsAuthenticated && 
+            c.Player?.UserId == userId);
+            
+        if (duplicateClient != null)
+        {
+            Console.WriteLine($"CRITICAL: Duplicate user {userId} detected! Client {duplicateClient.Id} already has this user.");
+            return false;
+        }
+        
+        return true;
+    }
+    
+    public List<ConnectedClient> GetDuplicateUsers()
+    {
+        var authenticatedClients = _clients.Values.Where(c => c.IsAuthenticated && c.Player != null).ToList();
+        var duplicates = new List<ConnectedClient>();
+        
+        for (int i = 0; i < authenticatedClients.Count; i++)
+        {
+            for (int j = i + 1; j < authenticatedClients.Count; j++)
+            {
+                if (authenticatedClients[i].Player!.UserId == authenticatedClients[j].Player!.UserId)
+                {
+                    duplicates.Add(authenticatedClients[i]);
+                    duplicates.Add(authenticatedClients[j]);
+                    Console.WriteLine($"CRITICAL: Found duplicate users! {authenticatedClients[i].Id} and {authenticatedClients[j].Id} both have userId {authenticatedClients[i].Player!.UserId}");
+                }
+            }
+        }
+        
+        return duplicates.Distinct().ToList();
+    }
+    
     public async Task RemoveClientAsync(string clientId)
     {
         if (_clients.TryRemove(clientId, out var client))
