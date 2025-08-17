@@ -60,20 +60,28 @@ public class WebSocketMiddleware
         _gameWorld.AddClient(client);
         
         // Start authentication timeout (5 seconds to authenticate)
+        client.AuthTimeoutCts = new CancellationTokenSource();
         _ = Task.Run(async () => 
         {
-            await Task.Delay(5000);
-            if (!client.IsAuthenticated && webSocket.State == WebSocketState.Open)
+            try
             {
-                Console.WriteLine($"Client {client.Id} failed to authenticate within timeout");
-                try
+                await Task.Delay(5000, client.AuthTimeoutCts.Token);
+                if (!client.IsAuthenticated && webSocket.State == WebSocketState.Open)
                 {
-                    await webSocket.CloseAsync(
-                        WebSocketCloseStatus.PolicyViolation, 
-                        "Authentication timeout", 
-                        CancellationToken.None);
+                    Console.WriteLine($"Client {client.Id} failed to authenticate within timeout");
+                    try
+                    {
+                        await webSocket.CloseAsync(
+                            WebSocketCloseStatus.PolicyViolation, 
+                            "Authentication timeout", 
+                            CancellationToken.None);
+                    }
+                    catch { }
                 }
-                catch { }
+            }
+            catch (OperationCanceledException)
+            {
+                // Timeout was cancelled (normal for reconnections)
             }
         });
         
@@ -109,7 +117,7 @@ public class WebSocketMiddleware
         }
         finally
         {
-            await HandleDisconnectAsync(client);
+            await HandleWebSocketCloseAsync(client);
         }
     }
     
@@ -154,8 +162,7 @@ public class WebSocketMiddleware
                     if (client.IsAuthenticated && client.Player != null)
                     {
                         Console.WriteLine($"Player {client.Player.UserId} logging out");
-                        await _database.RemoveSessionAsync(client.Player.UserId);
-                        client.IsAuthenticated = false;
+                        await HandleDisconnectAsync(client);
                     }
                     // Close the WebSocket connection
                     await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Logout", CancellationToken.None);
@@ -237,18 +244,33 @@ public class WebSocketMiddleware
                 else
                 {
                     // Soft reconnect within time window
+                    _logger.LogInformation($"Reattached user {userId} to new socket");
+                    
+                    // Cancel the authentication timeout for the temporary client
+                    client.AuthTimeoutCts?.Cancel();
+                    
+                    // Update the existing client with the new WebSocket
                     existingClient.WebSocket = client.WebSocket;
                     existingClient.DisconnectedAt = null;
                     existingClient.LastActivity = DateTime.UtcNow;
                     
-                    _logger.LogInformation($"Reattached user {userId} to new socket");
+                    // Update session state to connected
                     await _database.UpdateSessionStateAsync(userId, 0);
                     
-                    // Transfer client reference and remove new client
-                    _gameWorld.RemoveClientAsync(client.Id).Wait();
+                    // Don't remove the temporary client from GameWorld yet
+                    // Instead, copy the existing player data to the temporary client
+                    // so the current WebSocket message loop can continue properly
+                    client.Player = existingClient.Player;
+                    client.Username = existingClient.Username;
+                    client.IsAuthenticated = true;
+                    client.DisconnectedAt = null;
+                    client.LastActivity = DateTime.UtcNow;
                     
-                    // Send spawn logic
-                    await SpawnPlayerAsync(existingClient);
+                    // Now remove the old disconnected client
+                    await _gameWorld.RemoveClientAsync(existingClient.Id);
+                    
+                    // Send spawn logic using the current client (which now has the player data)
+                    await SpawnPlayerAsync(client);
                     return;
                 }
             }
@@ -280,6 +302,9 @@ public class WebSocketMiddleware
             client.Player = player;
             client.Username = username;
             client.IsAuthenticated = true;
+            
+            // Cancel authentication timeout since we're now authenticated
+            client.AuthTimeoutCts?.Cancel();
             
             // Send success response
             await client.SendMessageAsync(new 
@@ -458,5 +483,31 @@ public class WebSocketMiddleware
                 "Connection closed",
                 CancellationToken.None);
         }
+    }
+    
+    private async Task HandleWebSocketCloseAsync(ConnectedClient client)
+    {
+        // This is called when WebSocket connection is lost (browser closed, network issue, etc.)
+        // Similar to JavaScript ws.on('close') - we do soft disconnect here
+        
+        if (!client.IsAuthenticated || client.Player == null)
+        {
+            // Unauthenticated client disconnected, just remove it
+            await _gameWorld.RemoveClientAsync(client.Id);
+            return;
+        }
+        
+        Console.WriteLine($"Client {client.Player.UserId} lost connection.");
+        
+        // Mark as disconnected but keep in memory for potential reconnection
+        client.DisconnectedAt = DateTime.UtcNow;
+        client.WebSocket = null!; // Clear WebSocket reference
+        
+        // Update session state to soft disconnect (1 = disconnected, 0 = connected)
+        await _database.UpdateSessionStateAsync(client.Player.UserId, 1);
+        
+        // Keep client in _gameWorld._clients for potential reconnection
+        // The heartbeat timer in GameLoopService will clean up after 30 seconds if no reconnection
+        // Don't broadcast quit yet - only do that on final cleanup
     }
 }

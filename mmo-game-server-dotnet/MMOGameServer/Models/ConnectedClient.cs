@@ -7,13 +7,14 @@ namespace MMOGameServer.Models;
 public class ConnectedClient
 {
     public string Id { get; set; }
-    public WebSocket WebSocket { get; set; }
+    public WebSocket? WebSocket { get; set; }
     public Player? Player { get; set; }
     public bool IsAuthenticated { get; set; }
     public DateTime ConnectedAt { get; set; }
     public DateTime? DisconnectedAt { get; set; }
     public DateTime? LastActivity { get; set; }
     public string? Username { get; set; }
+    public CancellationTokenSource? AuthTimeoutCts { get; set; }
     
     public ConnectedClient(WebSocket webSocket)
     {
@@ -28,11 +29,11 @@ public class ConnectedClient
     
     public async Task SendMessageAsync(object message)
     {
-        if (WebSocket.State == WebSocketState.Open)
+        if (IsConnected())
         {
             var json = JsonSerializer.Serialize(message);
             var bytes = Encoding.UTF8.GetBytes(json);
-            await WebSocket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+            await WebSocket!.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
         }
     }
 }

@@ -169,13 +169,16 @@ public class GameLoopService : BackgroundService
     {
         if (client.Player != null)
         {
+            // Send the quit request to ALL players (including quitter)
+            await _gameWorld.BroadcastToAllAsync(new { type = "quitPlayer", id = client.Player.UserId });
+
             // Save player position
             await _databaseService.SavePlayerPositionAsync(
-                client.Player.UserId, 
-                client.Player.X, 
-                client.Player.Y, 
+                client.Player.UserId,
+                client.Player.X,
+                client.Player.Y,
                 client.Player.Facing);
-            
+
             // Remove from terrain tracking
             _terrainService.RemovePlayer(client.Player.UserId);
         }
@@ -189,12 +192,6 @@ public class GameLoopService : BackgroundService
                 System.Net.WebSockets.WebSocketCloseStatus.NormalClosure,
                 "Timeout",
                 CancellationToken.None);
-        }
-        
-        // Broadcast quit to other players
-        if (client.Player != null)
-        {
-            await _gameWorld.BroadcastToAllAsync(new { type = "quitPlayer", id = client.Player.UserId });
         }
     }
 }

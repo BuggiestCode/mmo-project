@@ -27,12 +27,13 @@ This is a multiplayer online game (MMO) with a distributed architecture consisti
 - Serves Unity WebGL build from `/public`
 - PostgreSQL connection for user management
 
-**Game Server** (`mmo-game-server/`)
-- WebSocket server handling real-time game state
-- Player position synchronization across clients
-- Terrain data serving and chunk management
-- Session management to prevent duplicate logins
-- Pathfinding system for player movement
+**Game Server** (`mmo-game-server-dotnet/MMOGameServer/`)
+- ASP.NET Core WebSocket server built with .NET 8
+- Dependency injection with singleton services for shared state
+- Real-time player movement with A* pathfinding
+- Background game loop service for deterministic state updates
+- Concurrent chunk-based terrain management system
+- JWT authentication middleware with session management
 
 **Database Structure**
 - **Auth DB** (`mmo_auth`): Users table, active_sessions table
@@ -55,10 +56,25 @@ cd mmo-backend
 npm install
 node server.js  # Starts on port 8080
 
-# Game Server
-cd mmo-game-server
-npm install
-node game_server.js  # Starts WebSocket server on port 8080
+# Game Server (.NET)
+cd mmo-game-server-dotnet/MMOGameServer
+dotnet restore
+dotnet run  # Starts WebSocket server on port 8080
+
+# Alternative build and run
+dotnet build
+dotnet bin/Debug/net8.0/MMOGameServer.dll
+
+# Development with environment variables
+cd mmo-game-server-dotnet/MMOGameServer
+export AUTH_DATABASE_URL="postgres://username:password@localhost:5432/mmo_auth"
+export GAME_DATABASE_URL="postgres://username:password@localhost:5432/mmo_game" 
+export JWT_SECRET="your-secret-key"
+export WORLD_NAME="world1-dotnet"
+dotnet run
+
+# Production build
+dotnet publish -c Release -o ./publish
 ```
 
 ### Unity Development
@@ -109,8 +125,8 @@ psql -U postgres -d mmo_game < mmo-db/game_schema.sql
 cd mmo-backend
 fly deploy -a mmo-auth-frontend-staging --config fly-staging.toml
 
-# Deploy game world server
-cd mmo-game-server
+# Deploy game world server (.NET)
+cd mmo-game-server-dotnet/MMOGameServer
 fly deploy -a mmo-world1-staging --config worlds/staging/fly-world1-staging.toml
 ```
 
@@ -127,9 +143,21 @@ fly deploy -a mmo-world1-staging --config worlds/staging/fly-world1-staging.toml
 ### Backend Structure
 - `mmo-backend/routes/auth.js` - Authentication endpoints
 - `mmo-backend/server.js` - Main Express server
-- `mmo-game-server/game_server.js` - WebSocket game server
-- `mmo-game-server/routes/` - Game logic modules
-- `mmo-game-server/terrain/` - Terrain chunk JSON data
+
+### C# Game Server Structure (`mmo-game-server-dotnet/MMOGameServer/`)
+- `Program.cs` - ASP.NET Core startup and service configuration
+- `Middleware/WebSocketMiddleware.cs` - WebSocket connection handling and message routing
+- `Services/` - Core game services using dependency injection:
+  - `GameWorldService.cs` - Client connection management and broadcasting
+  - `DatabaseService.cs` - PostgreSQL operations for auth and game data
+  - `TerrainService.cs` - Chunk loading, caching, and walkability validation
+  - `PathfindingService.cs` - A* pathfinding algorithm implementation
+  - `GameLoopService.cs` - Background service for deterministic game tick processing
+- `Models/` - Data models:
+  - `Player.cs` - Player state, movement, and path management
+  - `ConnectedClient.cs` - WebSocket client wrapper with authentication state
+- `terrain/` - Terrain chunk JSON data (shared format with Unity)
+- `worlds/` - Fly.io deployment configurations for staging/production
 
 ## Testing & Debugging
 
@@ -139,14 +167,43 @@ fly deploy -a mmo-world1-staging --config worlds/staging/fly-world1-staging.toml
 - Check Unity Console for WebSocket connection status
 
 ### Backend Testing
+**Node.js Backend**:
 - No automated tests configured yet
 - Use `console.log` for debugging
+
+**C# Game Server**:
+- Built-in .NET logging with configurable levels (Debug, Info, Warning, Error)
+- Health check endpoints: `/health` and `/api/health`
+- Use `dotnet run` for development with hot reload
+- Visual Studio/VS Code debugging support with breakpoints
+- WebSocket testing available at `ws://localhost:5096/ws` (development)
+- Swagger UI available at `http://localhost:5096/swagger` (if enabled)
 - Monitor Fly.io logs: `fly logs -a <app-name>`
+
+**C# Development Tools**:
+```bash
+# Watch mode for automatic rebuild on file changes
+dotnet watch run
+
+# Run with specific logging level
+dotnet run --configuration Debug
+ASPNETCORE_ENVIRONMENT=Development dotnet run
+
+# Database connection testing
+dotnet run --urls "http://localhost:8080"
+```
 
 ### Common Issues
 - WebSocket connection failures: Check JWT_SECRET matches across services
 - Terrain not loading: Verify chunk JSON files exist in `terrain/` directory
 - Double login prevention: Active sessions table manages connection state
+
+**C# Game Server Specific**:
+- Missing environment variables: Server throws on startup if AUTH_DATABASE_URL or GAME_DATABASE_URL not set
+- Terrain path issues: Service tries multiple fallback paths (working dir, relative paths)
+- Database connection: SSL disabled for Fly.io internal connections
+- Port conflicts: Default development port is 5096, production uses PORT environment variable
+- Authentication timeout: Clients have 5 seconds to send auth message after WebSocket connection
 
 ## Important Implementation Details
 
@@ -172,3 +229,38 @@ fly deploy -a mmo-world1-staging --config worlds/staging/fly-world1-staging.toml
 - Passwords hashed with bcrypt
 - Environment variables for all secrets
 - No sensitive data in client-side code
+
+## C# Game Server Architecture Details
+
+### Service-Oriented Design
+The C# game server uses ASP.NET Core's dependency injection system with singleton services to maintain shared state across WebSocket connections:
+
+- **GameWorldService**: Manages all connected clients and handles broadcasting
+- **DatabaseService**: Handles PostgreSQL connections for both auth and game databases
+- **TerrainService**: Loads and caches terrain chunks with automatic cleanup
+- **PathfindingService**: Implements A* algorithm for server-side movement validation
+- **GameLoopService**: Background hosted service running at 500ms intervals
+
+### Key Architectural Decisions
+
+**Deterministic Game Loop**:
+- Fixed 500ms tick rate matching the original JavaScript implementation
+- Parallel movement calculation followed by sequential state updates
+- Dirty flag system to minimize network traffic
+
+**Concurrent Chunk Management**:
+- Thread-safe `ConcurrentDictionary` for terrain chunk storage
+- Reference counting system for automatic memory management
+- Multiple path fallback for terrain directory location
+
+**Robust Session Management**:
+- 5-second authentication timeout for new connections
+- Automatic cleanup of stale sessions on server startup
+- Duplicate login prevention with graceful reconnection handling
+- 30-second disconnect timeout with 2-minute idle timeout
+
+**Performance Optimizations**:
+- Async/await throughout for non-blocking I/O operations
+- Batched database operations where possible
+- Efficient JSON serialization using System.Text.Json
+- Connection pooling through Npgsql
