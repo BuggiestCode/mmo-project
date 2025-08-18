@@ -235,3 +235,16 @@ fly secrets unset <SECRET_NAME> -a <app-name>
 - Verify JWT_SECRET matches between auth and world servers
 - Check WORLD_NAME is unique across all servers
 - Ensure both AUTH_DATABASE_URL and GAME_DATABASE_URL are set
+
+
+
+### Delete entry from databases (list the user_id and find matching)
+-- in mmo_game
+BEGIN;
+DELETE FROM players WHERE user_id = 24;
+COMMIT;
+
+-- in mmo_auth
+BEGIN;
+DELETE FROM users WHERE id = 24;
+COMMIT;

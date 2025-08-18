@@ -186,9 +186,9 @@ public class DatabaseService
                 var connectionState = reader.GetInt32(1); // connection_state
                 var lastHeartbeat = reader.GetDateTime(2); // last_heartbeat
                 
-                // Session is active if connection_state is 0 or heartbeat is within 30 seconds
-                var timeSinceHeartbeat = DateTime.UtcNow - lastHeartbeat;
-                var isActive = connectionState == 0 || timeSinceHeartbeat.TotalSeconds < 30;
+                // Session is active only if connection_state is 0 (connected)
+                // Disconnected sessions (state 1) are eligible for soft reconnect
+                var isActive = connectionState == 0;
                 
                 return (true, isActive, world);
             }
