@@ -112,8 +112,7 @@ public class TerrainService
         
         _chunkRefCounts.AddOrUpdate(newChunkKey, 1, (key, count) => count + 1);
         _playerChunks[playerId] = newChunkKey;
-        
-        _logger.LogDebug($"Player {playerId} moved from chunk {previousChunkKey} to {newChunkKey}");
+
         return true;
     }
 
@@ -235,7 +234,6 @@ public class TerrainService
         }
         
         var isWalkable = chunk.Walkability[flatIndex];
-        _logger.LogInformation($"Movement validation: world({worldX}, {worldY}) -> chunk({chunkX}, {chunkY}) tile({localX}, {localY}) flatIndex({flatIndex}) = {isWalkable}");
         
         return isWalkable;
     }

@@ -157,6 +157,27 @@ public class WebSocketMiddleware
                     }
                     break;
                     
+                case "enable_heartbeat":
+                    if (client.IsAuthenticated && client.Player != null)
+                    {
+                        HandleEnableHeartbeat(client);
+                    }
+                    break;
+                    
+                case "disable_heartbeat":
+                    if (client.IsAuthenticated && client.Player != null)
+                    {
+                        HandleDisableHeartbeat(client);
+                    }
+                    break;
+                    
+                case "ping":
+                    if (client.IsAuthenticated)
+                    {
+                        await HandlePingAsync(client, root);
+                    }
+                    break;
+                    
                 case "quit":
                 case "logout":
                     if (client.IsAuthenticated && client.Player != null)
@@ -416,24 +437,11 @@ public class WebSocketMiddleware
         {
             client.Player.SetPath(path);
             
-            await client.SendMessageAsync(new
-            {
-                type = "pathSet",
-                path = path.Select(p => new { x = p.x, y = p.y }),
-                startPos = new { x = startPos.x, y = startPos.y }
-            });
-            
             _logger.LogInformation($"Player {client.Player.UserId} path set: {path.Count} steps");
         }
         else
         {
             _logger.LogInformation($"No valid path found for player {client.Player.UserId} to ({targetX}, {targetY})");
-            await client.SendMessageAsync(new
-            {
-                type = "pathFailed",
-                target = new { x = targetX, y = targetY },
-                reason = "No valid path"
-            });
         }
     }
     
@@ -463,6 +471,39 @@ public class WebSocketMiddleware
         };
         
         await _gameWorld.BroadcastToAllAsync(chatMessage, client.Id);
+    }
+    
+    private void HandleEnableHeartbeat(ConnectedClient client)
+    {
+        if (client.Player == null) return;
+        
+        client.Player.DoNetworkHeartbeat = true;
+        _logger.LogInformation($"Enabled network heartbeat for player {client.Player.UserId}");
+    }
+    
+    private void HandleDisableHeartbeat(ConnectedClient client)
+    {
+        if (client.Player == null) return;
+        
+        client.Player.DoNetworkHeartbeat = false;
+        _logger.LogInformation($"Disabled network heartbeat for player {client.Player.UserId}");
+    }
+    
+    private async Task HandlePingAsync(ConnectedClient client, JsonElement message)
+    {
+        // Extract timestamp from ping message
+        long timestamp = 0;
+        if (message.TryGetProperty("timestamp", out var timestampElement))
+        {
+            timestamp = timestampElement.GetInt64();
+        }
+        
+        // Send pong response with the same timestamp
+        await client.SendMessageAsync(new
+        {
+            type = "pong",
+            timestamp = timestamp
+        });
     }
     
     private async Task SpawnPlayerAsync(ConnectedClient client)

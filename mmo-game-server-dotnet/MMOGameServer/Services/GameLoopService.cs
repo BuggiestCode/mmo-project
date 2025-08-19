@@ -93,9 +93,6 @@ public class GameLoopService : BackgroundService
                 
                 // Update player position
                 client.Player.UpdatePosition(nextMove.Value.x, nextMove.Value.y);
-                
-                _logger.LogDebug("Tick: Player {UserId} moved to ({X}, {Y})", 
-                    client.Player.UserId, nextMove.Value.x, nextMove.Value.y);
             }
         }
         
@@ -115,6 +112,9 @@ public class GameLoopService : BackgroundService
             var payload = new { type = "state", players = snapshot };
             await _gameWorld.BroadcastToAllAsync(payload);
         }
+        
+        // Send heartbeat ticks to clients that have network heartbeat enabled
+        await SendHeartbeatTicksAsync(clients);
     }
 
     private async Task<(ConnectedClient client, (float x, float y)? nextMove)> ProcessPlayerMovementAsync(ConnectedClient client)
@@ -124,6 +124,26 @@ public class GameLoopService : BackgroundService
             var nextMove = client.Player?.GetNextMove();
             return (client, nextMove);
         });
+    }
+
+    private async Task SendHeartbeatTicksAsync(List<ConnectedClient> clients)
+    {
+        var heartbeatMessage = new { type = "heartbeat_game_tick" };
+        
+        foreach (var client in clients)
+        {
+            if (client.Player?.DoNetworkHeartbeat == true && client.IsConnected())
+            {
+                try
+                {
+                    await client.SendMessageAsync(heartbeatMessage);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to send heartbeat tick to player {UserId}", client.Player.UserId);
+                }
+            }
+        }
     }
 
     private async void HeartbeatClients(object? state)

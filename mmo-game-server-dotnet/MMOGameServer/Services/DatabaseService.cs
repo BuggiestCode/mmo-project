@@ -26,7 +26,7 @@ public class DatabaseService
     
     private string ConvertUrlToConnectionString(string url)
     {
-        // Parse postgres://username:password@host:port/database format
+        // Parse database format (format set on env var)
         var uri = new Uri(url);
         var userInfo = uri.UserInfo.Split(':');
         var username = userInfo[0];

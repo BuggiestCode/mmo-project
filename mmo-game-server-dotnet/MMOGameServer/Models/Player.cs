@@ -7,6 +7,7 @@ public class Player
     public float Y { get; set; }
     public int Facing { get; set; }
     public bool IsDirty { get; set; }
+    public bool DoNetworkHeartbeat { get; set; }
     
     private List<(float x, float y)> _currentPath = new();
     private (float x, float y)? _nextTile;
@@ -19,6 +20,7 @@ public class Player
         Y = y;
         Facing = 0;
         IsDirty = false;
+        DoNetworkHeartbeat = false;
         _isMoving = false;
     }
     
@@ -51,7 +53,9 @@ public class Player
         }
         
         IsDirty = true;
-        Console.WriteLine($"Player {UserId} next move: ({_nextTile.Value.x}, {_nextTile.Value.y}), {_currentPath.Count} steps remaining");
+
+        //Console.WriteLine($"Player {UserId} next move: ({_nextTile.Value.x}, {_nextTile.Value.y}), {_currentPath.Count} steps remaining");
+
         return _nextTile;
     }
     
@@ -94,7 +98,6 @@ public class Player
             y = Y,
             facing = Facing,
             isMoving = _isMoving,
-            nextTile = _nextTile.HasValue ? new { x = _nextTile.Value.x, y = _nextTile.Value.y } : null
         };
     }
 }
