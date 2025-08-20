@@ -103,4 +103,35 @@ public class GameWorldService
         }
         await Task.WhenAll(tasks);
     }
+    
+    // Helper methods for consistent player data formatting
+    public object GetFullPlayerData(ConnectedClient client)
+    {
+        if (client.Player == null) return null!;
+        
+        return new
+        {
+            id = client.Player.UserId.ToString(),
+            username = client.Username,
+            xPos = client.Player.X,
+            yPos = client.Player.Y,
+            facing = client.Player.Facing
+        };
+    }
+    
+    public List<object> GetFullPlayerData(IEnumerable<int> playerIds)
+    {
+        return _clients.Values
+            .Where(c => c.IsAuthenticated && c.Player != null && playerIds.Contains(c.Player.UserId))
+            .Select(GetFullPlayerData)
+            .Where(p => p != null)
+            .ToList();
+    }
+    
+    public List<ConnectedClient> GetClientsByUserIds(IEnumerable<int> userIds)
+    {
+        return _clients.Values
+            .Where(c => c.IsAuthenticated && c.Player != null && userIds.Contains(c.Player.UserId))
+            .ToList();
+    }
 }

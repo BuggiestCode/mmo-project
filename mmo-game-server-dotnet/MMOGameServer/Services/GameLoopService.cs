@@ -68,7 +68,6 @@ public class GameLoopService : BackgroundService
         var clients = _gameWorld.GetAuthenticatedClients().ToList();
         if (!clients.Any()) return;
         
-        var snapshot = new List<object>();
         var movementTasks = new List<Task<(ConnectedClient client, (float x, float y)? nextMove)>>();
         
         // Start all movement calculations in parallel
@@ -83,12 +82,12 @@ public class GameLoopService : BackgroundService
         // Wait for ALL movement calculations to complete (deterministic)
         var movementResults = await Task.WhenAll(movementTasks);
         
-        // Apply all movement results
+        // Apply all movement results (this triggers visibility updates in TerrainService)
         foreach (var (client, nextMove) in movementResults)
         {
             if (nextMove.HasValue)
             {
-                // Update chunk tracking
+                // Update chunk tracking (this calls UpdatePlayerVisibility internally)
                 _terrainService.UpdatePlayerChunk(client.Player!.UserId, nextMove.Value.x, nextMove.Value.y);
                 
                 // Update player position
@@ -97,20 +96,61 @@ public class GameLoopService : BackgroundService
         }
         
         // Build snapshot of all dirty players
+        var allPlayerSnapshots = new Dictionary<int, object>();
         foreach (var client in clients)
         {
             if (client.Player?.IsDirty == true)
             {
-                snapshot.Add(client.Player.GetSnapshot());
+                allPlayerSnapshots[client.Player.UserId] = client.Player.GetSnapshot();
                 client.Player.IsDirty = false;
             }
         }
         
-        // Broadcast state update if there are changes
-        if (snapshot.Count > 0)
+        // Get visibility changes that occurred this tick
+        var visibilityChanges = _terrainService.GetAndClearVisibilityChanges();
+        
+        // Send personalized updates to each player
+        var updateTasks = new List<Task>();
+        foreach (var client in clients)
         {
-            var payload = new { type = "state", players = snapshot };
-            await _gameWorld.BroadcastToAllAsync(payload);
+            if (client.Player == null) continue;
+            
+            var playerId = client.Player.UserId;
+            var hasVisibilityChanges = visibilityChanges.TryGetValue(playerId, out var changes);
+            var visiblePlayerIds = _terrainService.GetVisiblePlayers(playerId);
+            
+            // Always include self in visible players (for own movement updates)
+            visiblePlayerIds.Add(playerId);
+            
+            // Filter snapshots to only include players this client can see (including self)
+            var visibleSnapshots = allPlayerSnapshots
+                .Where(kvp => visiblePlayerIds.Contains(kvp.Key))
+                .Select(kvp => kvp.Value)
+                .ToList();
+            
+            // Only send update if there are changes
+            if (visibleSnapshots.Any() || hasVisibilityChanges)
+            {
+                var personalizedUpdate = new
+                {
+                    type = "state",
+                    players = visibleSnapshots.Any() ? visibleSnapshots : null,
+                    clientsToLoad = hasVisibilityChanges && changes.newlyVisible.Any() 
+                        ? _gameWorld.GetFullPlayerData(changes.newlyVisible) 
+                        : null,
+                    clientsToUnload = hasVisibilityChanges && changes.noLongerVisible.Any() 
+                        ? changes.noLongerVisible.ToArray() 
+                        : null
+                };
+                
+                updateTasks.Add(client.SendMessageAsync(personalizedUpdate));
+            }
+        }
+        
+        // Send all personalized updates in parallel
+        if (updateTasks.Any())
+        {
+            await Task.WhenAll(updateTasks);
         }
         
         // Send heartbeat ticks to clients that have network heartbeat enabled

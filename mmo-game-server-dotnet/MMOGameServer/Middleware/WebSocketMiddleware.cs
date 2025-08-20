@@ -538,29 +538,27 @@ public class WebSocketMiddleware
             }
         };
         
-        // Send to all clients (including self)
+        // Send to all clients (including self) - REVERT TO ORIGINAL
         await _gameWorld.BroadcastToAllAsync(spawnMessage);
         
-        // Send other players to the new client
-        var otherPlayers = _gameWorld.GetAuthenticatedClients()
+        // Send other players to the new client (using helper method) - REVERT TO ORIGINAL  
+        var otherPlayerIds = _gameWorld.GetAuthenticatedClients()
             .Where(c => c.Player != null && c.Player.UserId != client.Player.UserId)
-            .Select(c => new
-            {
-                id = c.Player!.UserId.ToString(),
-                username = c.Username,
-                xPos = c.Player.X,
-                yPos = c.Player.Y
-            })
+            .Select(c => c.Player!.UserId)
             .ToList();
         
-        if (otherPlayers.Any())
+        if (otherPlayerIds.Any())
         {
+            var otherPlayersData = _gameWorld.GetFullPlayerData(otherPlayerIds);
             await client.SendMessageAsync(new
             {
                 type = "spawnOtherPlayers",
-                players = otherPlayers
+                players = otherPlayersData
             });
         }
+        
+        // Initialize visibility tracking for the new player
+        _terrain.UpdatePlayerVisibility(client.Player.UserId, client.Player.X, client.Player.Y);
     }
     
     private async Task HandleDisconnectAsync(ConnectedClient client)

@@ -96,8 +96,7 @@ public class Player
             id = UserId,
             x = X,
             y = Y,
-            facing = Facing,
-            isMoving = _isMoving,
+            isMoving = _isMoving
         };
     }
 }

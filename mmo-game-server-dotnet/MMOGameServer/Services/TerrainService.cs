@@ -18,6 +18,7 @@ public class TerrainService
     private readonly ConcurrentDictionary<int, string> _playerChunks = new();
     private readonly ConcurrentDictionary<string, int> _chunkRefCounts = new();
     private readonly ConcurrentDictionary<int, HashSet<string>> _playerVisibilityChunks = new();
+    private readonly ConcurrentDictionary<int, (HashSet<int> newlyVisible, HashSet<int> noLongerVisible)> _pendingVisibilityChanges = new();
     private readonly string _terrainPath;
     private readonly int _chunkSize = 16;
     private readonly Timer _cleanupTimer;
@@ -171,8 +172,10 @@ public class TerrainService
         
         _playerVisibilityChunks[playerId] = newVisibilityChunks;
         
+        // Store visibility changes for this tick
         if (newlyVisible.Any() || noLongerVisible.Any())
         {
+            _pendingVisibilityChanges[playerId] = (newlyVisible, noLongerVisible);
             _logger.LogInformation($"Player {playerId} visibility update: +{newlyVisible.Count} -{noLongerVisible.Count} players");
         }
         
@@ -207,6 +210,32 @@ public class TerrainService
         {
             _logger.LogInformation(GetPlayerVisibilityInfo(playerId));
         }
+    }
+    
+    // Methods for GameLoopService to collect visibility changes
+    public Dictionary<int, (HashSet<int> newlyVisible, HashSet<int> noLongerVisible)> GetAndClearVisibilityChanges()
+    {
+        var changes = _pendingVisibilityChanges.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        _pendingVisibilityChanges.Clear();
+        return changes;
+    }
+    
+    public HashSet<int> GetVisiblePlayers(int playerId)
+    {
+        var visibilityChunks = _playerVisibilityChunks.GetValueOrDefault(playerId, new HashSet<string>());
+        var visiblePlayers = new HashSet<int>();
+        
+        foreach (var otherPlayerId in _playerChunks.Keys)
+        {
+            if (otherPlayerId == playerId) continue;
+            var otherChunk = _playerChunks[otherPlayerId];
+            if (visibilityChunks.Contains(otherChunk))
+            {
+                visiblePlayers.Add(otherPlayerId);
+            }
+        }
+        
+        return visiblePlayers;
     }
 
     public void RemovePlayer(int playerId)
