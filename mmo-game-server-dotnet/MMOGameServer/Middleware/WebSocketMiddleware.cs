@@ -135,7 +135,7 @@ public class WebSocketMiddleware
             }
             
             var messageType = typeElement.GetString();
-            Console.WriteLine($"Received message type: {messageType}");
+            //Console.WriteLine($"Received message type: {messageType}");
             
             switch (messageType)
             {
@@ -147,6 +147,13 @@ public class WebSocketMiddleware
                     if (client.IsAuthenticated)
                     {
                         await HandleMoveAsync(client, root);
+                    }
+                    break;
+
+                case "visLog":
+                    if (client.IsAuthenticated)
+                    {
+                        _terrain.LogAllPlayersVisibility();
                     }
                     break;
                     
@@ -297,7 +304,7 @@ public class WebSocketMiddleware
                     // Cancel the authentication timeout for the temporary client
                     client.AuthTimeoutCts?.Cancel();
                     
-                    // Update the existing client with the new WebSocket
+                    // Update the existing client with the new WebSocket (redundant I think but defensive)
                     existingClient.WebSocket = client.WebSocket;
                     existingClient.DisconnectedAt = null;
                     existingClient.LastActivity = DateTime.UtcNow;
@@ -316,7 +323,7 @@ public class WebSocketMiddleware
                     await _gameWorld.RemoveClientAsync(existingClient.Id);
                     
                     // Send spawn logic using the current client
-                    await SpawnPlayerAsync(client);
+                    await SpawnWorldPlayerAsync(client);
                     return;
                 }
             }
@@ -400,7 +407,7 @@ public class WebSocketMiddleware
             Console.WriteLine($"Player {userId} ({username}) authorized successfully");
             
             // Spawn player in world
-            await SpawnPlayerAsync(client);
+            await SpawnWorldPlayerAsync(client);
         }
         catch (Exception ex)
         {
@@ -506,7 +513,7 @@ public class WebSocketMiddleware
         });
     }
     
-    private async Task SpawnPlayerAsync(ConnectedClient client)
+    private async Task SpawnWorldPlayerAsync(ConnectedClient client)
     {
         if (client.Player == null) return;
         
