@@ -51,42 +51,49 @@ public class DatabaseService
         var deleted = await cmd.ExecuteNonQueryAsync();
         Console.WriteLine($"Cleaned up {deleted} stale sessions for {_worldName}");
     }
-    
+
     public async Task<Player?> LoadOrCreatePlayerAsync(int userId)
     {
         using var conn = new NpgsqlConnection(_gameConnectionString);
         await conn.OpenAsync();
-        
+
         // Try to load existing player
         using var selectCmd = new NpgsqlCommand(
-            "SELECT user_id, x, y, facing FROM players WHERE user_id = @userId", conn);
+            "SELECT user_id, x, y, facing, character_creator_complete FROM players WHERE user_id = @userId", conn);
         selectCmd.Parameters.AddWithValue("userId", userId);
-        
+
         using var reader = await selectCmd.ExecuteReaderAsync();
         if (await reader.ReadAsync())
         {
             var player = new Player(
                 reader.GetInt32(0),  // user_id
                 reader.GetInt32(1),  // x
-                reader.GetInt32(2)   // y
+                reader.GetInt32(2)  // y
             );
             player.Facing = reader.GetInt32(3);
+            player.CharacterCreatorCompleted = reader.GetBoolean(4);
             Console.WriteLine($"Loaded existing player {userId} at ({player.X}, {player.Y})");
             return player;
         }
-        
+
         // Create new player
         await reader.CloseAsync();
         using var insertCmd = new NpgsqlCommand(
-            "INSERT INTO players (user_id, x, y, facing) VALUES (@userId, @x, @y, @facing)", conn);
+            "INSERT INTO players (user_id, x, y, facing) VALUES (@userId, @x, @y, @facing, @characterCreatorComplete)", conn);
         insertCmd.Parameters.AddWithValue("userId", userId);
         insertCmd.Parameters.AddWithValue("x", 0);
         insertCmd.Parameters.AddWithValue("y", 0);
         insertCmd.Parameters.AddWithValue("facing", 0);
+        insertCmd.Parameters.AddWithValue("characterCreatorComplete", false);
         
         await insertCmd.ExecuteNonQueryAsync();
         Console.WriteLine($"Created new player {userId} at spawn");
-        return new Player(userId, 0, 0);
+
+        // Character creator is not completed by default
+        Player newPlayer = new Player(userId, 0, 0);
+        newPlayer.CharacterCreatorCompleted = false;
+
+        return newPlayer;
     }
     
     public async Task<bool> CreateSessionAsync(int userId)
@@ -263,6 +270,26 @@ public class DatabaseService
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to update session state for user {userId}: {ex.Message}");
+        }
+    }
+    
+    public async Task CompleteCharacterCreationAsync(int userId)
+    {
+        try
+        {
+            using var conn = new NpgsqlConnection(_gameConnectionString);
+            await conn.OpenAsync();
+            
+            using var cmd = new NpgsqlCommand(
+                "UPDATE players SET character_creator_complete = TRUE WHERE user_id = @userId", conn);
+            cmd.Parameters.AddWithValue("userId", userId);
+            
+            await cmd.ExecuteNonQueryAsync();
+            Console.WriteLine($"Character creation completed for user {userId}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to complete character creation for user {userId}: {ex.Message}");
         }
     }
 }

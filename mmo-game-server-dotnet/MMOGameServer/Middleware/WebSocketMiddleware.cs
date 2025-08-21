@@ -150,14 +150,13 @@ public class WebSocketMiddleware
                     }
                     break;
 
-                case "visLog":
+                case "completeCharacterCreation":
                     if (client.IsAuthenticated && client.Player != null)
                     {
-                        var info = _terrain.GetPlayerVisibilityInfo(client.Player);
-                        _logger.LogInformation(info);
+                        await _database.CompleteCharacterCreationAsync(client.Player.UserId);
                     }
                     break;
-                    
+
                 case "chat":
                     if (client.IsAuthenticated)
                     {
@@ -191,11 +190,23 @@ public class WebSocketMiddleware
                     if (client.IsAuthenticated && client.Player != null)
                     {
                         Console.WriteLine($"Player {client.Player.UserId} logging out");
+                        client.IsIntentionalLogout = true; // Mark as intentional logout
                         await HandleDisconnectAsync(client);
                     }
                     // Close the WebSocket connection
                     await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Logout", CancellationToken.None);
                     break;
+
+                    /* // May be useful later when adding NPCs and ground items.
+                case "visLog":
+                    if (client.IsAuthenticated && client.Player != null)
+                    {
+                        var info = _terrain.GetPlayerVisibilityInfo(client.Player);
+                        _logger.LogInformation(info);
+                    }
+                    break;
+                */
+
                     
                 default:
                     Console.WriteLine($"Unknown message type: {messageType}");
@@ -320,8 +331,8 @@ public class WebSocketMiddleware
                     client.DisconnectedAt = null;
                     client.LastActivity = DateTime.UtcNow;
                     
-                    // Remove the old disconnected client
-                    await _gameWorld.RemoveClientAsync(existingClient.Id);
+                    // Remove the old disconnected client (preserve session for reconnection)
+                    await _gameWorld.RemoveClientAsync(existingClient.Id, removeSession: false);
                     
                     // Send spawn logic using the current client
                     await SpawnWorldPlayerAsync(client);
@@ -464,8 +475,8 @@ public class WebSocketMiddleware
         if (string.IsNullOrEmpty(chatContents)) return;
         
         var timestamp = message.TryGetProperty("timestamp", out var tsElement) 
-            ? tsElement.GetInt64() 
-            : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            ? tsElement.GetString() ?? DateTimeOffset.UtcNow.ToString("o")
+            : DateTimeOffset.UtcNow.ToString("o");
         
         _logger.LogInformation($"Chat from {client.Username}: {chatContents}");
         
@@ -475,7 +486,7 @@ public class WebSocketMiddleware
             type = "chat",
             sender = client.Username,
             chat_contents = chatContents,
-            timestamp = timestamp
+            timestamp = timestamp  // Pass through ISO string unchanged
         };
         
         await _gameWorld.BroadcastToAllAsync(chatMessage, client.Id);
@@ -520,7 +531,7 @@ public class WebSocketMiddleware
         
         // Ensure spawn chunk is loaded and get initial visibility
         var (newlyVisible, _) = _terrain.UpdatePlayerChunk(client.Player, client.Player.X, client.Player.Y);
-        
+
         // Build spawn message
         var spawnMessage = new
         {
@@ -531,7 +542,8 @@ public class WebSocketMiddleware
                 username = client.Username,
                 xPos = client.Player.X,
                 yPos = client.Player.Y
-            }
+            },
+            characterCreatorCompleted = client.Player.CharacterCreatorCompleted
         };
         
         // Send spawn message to self immediately (player needs to see themselves)
@@ -592,6 +604,13 @@ public class WebSocketMiddleware
         {
             // Unauthenticated client disconnected, just remove it
             await _gameWorld.RemoveClientAsync(client.Id);
+            return;
+        }
+        
+        // Skip soft disconnect logic for intentional logout
+        if (client.IsIntentionalLogout)
+        {
+            Console.WriteLine($"Client {client.Player.UserId} intentional logout - skipping soft disconnect.");
             return;
         }
         

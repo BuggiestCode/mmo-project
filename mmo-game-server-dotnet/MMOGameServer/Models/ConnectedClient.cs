@@ -15,6 +15,7 @@ public class ConnectedClient
     public DateTime? LastActivity { get; set; }
     public string? Username { get; set; }
     public CancellationTokenSource? AuthTimeoutCts { get; set; }
+    public bool IsIntentionalLogout { get; set; } = false;
     
     public ConnectedClient(WebSocket webSocket)
     {

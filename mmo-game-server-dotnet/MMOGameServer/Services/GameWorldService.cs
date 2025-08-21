@@ -58,11 +58,11 @@ public class GameWorldService
         return duplicates.Distinct().ToList();
     }
     
-    public async Task RemoveClientAsync(string clientId)
+    public async Task RemoveClientAsync(string clientId, bool removeSession = true)
     {
         if (_clients.TryRemove(clientId, out var client))
         {
-            if (client.Player != null)
+            if (client.Player != null && removeSession)
             {
                 await _databaseService.RemoveSessionAsync(client.Player.UserId);
             }
