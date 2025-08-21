@@ -233,6 +233,9 @@ public class GameLoopService : BackgroundService
                 }
             }
             
+            // Session validation: Check for orphaned database sessions
+            await ValidateSessionsAsync();
+            
             foreach (var client in _gameWorld.GetAllClients())
             {
                 // Skip if already marked for removal
@@ -295,6 +298,41 @@ public class GameLoopService : BackgroundService
                 System.Net.WebSockets.WebSocketCloseStatus.NormalClosure,
                 "Timeout",
                 CancellationToken.None);
+        }
+    }
+    
+    private async Task ValidateSessionsAsync()
+    {
+        try
+        {
+            // Get all active sessions from database for this world
+            var databaseSessions = await _databaseService.GetActiveSessionsForWorldAsync();
+            
+            // Get all authenticated clients currently in memory
+            var memoryUserIds = _gameWorld.GetAuthenticatedClients()
+                .Where(c => c.Player != null)
+                .Select(c => c.Player!.UserId)
+                .ToHashSet();
+            
+            // Find sessions in database that don't have corresponding in-memory clients
+            var orphanedSessions = databaseSessions.Where(userId => !memoryUserIds.Contains(userId)).ToList();
+            
+            if (orphanedSessions.Any())
+            {
+                _logger.LogWarning("Found {Count} orphaned sessions: {UserIds}", 
+                    orphanedSessions.Count, string.Join(", ", orphanedSessions));
+                
+                // Remove orphaned sessions from database
+                foreach (var userId in orphanedSessions)
+                {
+                    await _databaseService.RemoveSessionAsync(userId);
+                    _logger.LogInformation("Cleaned up orphaned session for user {UserId}", userId);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating sessions");
         }
     }
 }

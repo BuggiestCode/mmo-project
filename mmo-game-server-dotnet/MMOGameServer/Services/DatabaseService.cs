@@ -79,7 +79,7 @@ public class DatabaseService
         // Create new player
         await reader.CloseAsync();
         using var insertCmd = new NpgsqlCommand(
-            "INSERT INTO players (user_id, x, y, facing) VALUES (@userId, @x, @y, @facing, @characterCreatorComplete)", conn);
+            "INSERT INTO players (user_id, x, y, facing, character_creator_complete) VALUES (@userId, @x, @y, @facing, @characterCreatorComplete)", conn);
         insertCmd.Parameters.AddWithValue("userId", userId);
         insertCmd.Parameters.AddWithValue("x", 0);
         insertCmd.Parameters.AddWithValue("y", 0);
@@ -291,5 +291,32 @@ public class DatabaseService
         {
             Console.WriteLine($"Failed to complete character creation for user {userId}: {ex.Message}");
         }
+    }
+    
+    public async Task<List<int>> GetActiveSessionsForWorldAsync()
+    {
+        var activeSessions = new List<int>();
+        
+        try
+        {
+            using var conn = new NpgsqlConnection(_authConnectionString);
+            await conn.OpenAsync();
+            
+            using var cmd = new NpgsqlCommand(
+                "SELECT user_id FROM active_sessions WHERE world = @world AND connection_state = 0", conn);
+            cmd.Parameters.AddWithValue("world", _worldName);
+            
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                activeSessions.Add(reader.GetInt32(0));
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to get active sessions for world {_worldName}: {ex.Message}");
+        }
+        
+        return activeSessions;
     }
 }
