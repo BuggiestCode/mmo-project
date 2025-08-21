@@ -161,7 +161,7 @@ var otherPlayers = _gameWorld.GetAuthenticatedClients()
     .Where(c => c.Player != null && c.Player.UserId != client.Player.UserId)
     .Select(c => new
     {
-        id = c.Player!.UserId.ToString(),
+        id = c.Player!.UserId,
         username = c.Username,
         xPos = c.Player.X,
         yPos = c.Player.Y

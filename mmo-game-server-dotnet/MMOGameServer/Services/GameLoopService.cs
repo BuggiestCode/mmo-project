@@ -119,27 +119,32 @@ public class GameLoopService : BackgroundService
             var hasVisibilityChanges = visibilityChanges.TryGetValue(playerId, out var changes);
             var visiblePlayerIds = _terrainService.GetVisiblePlayers(playerId);
             
-            // Always include self in visible players (for own movement updates)
-            visiblePlayerIds.Add(playerId);
+            // Separate self update from other players
+            object? selfUpdate = null;
+            if (allPlayerSnapshots.ContainsKey(playerId))
+            {
+                selfUpdate = allPlayerSnapshots[playerId];
+            }
             
-            // Filter snapshots to only include players this client can see (including self)
+            // Filter snapshots to only include OTHER visible players (exclude self)
             var visibleSnapshots = allPlayerSnapshots
-                .Where(kvp => visiblePlayerIds.Contains(kvp.Key))
+                .Where(kvp => kvp.Key != playerId && visiblePlayerIds.Contains(kvp.Key))
                 .Select(kvp => kvp.Value)
                 .ToList();
             
             // Only send update if there are changes
-            if (visibleSnapshots.Any() || hasVisibilityChanges)
+            if (selfUpdate != null || visibleSnapshots.Any() || hasVisibilityChanges)
             {
                 var personalizedUpdate = new
                 {
                     type = "state",
+                    selfStateUpdate = selfUpdate,
                     players = visibleSnapshots.Any() ? visibleSnapshots : null,
                     clientsToLoad = hasVisibilityChanges && changes.newlyVisible.Any() 
                         ? _gameWorld.GetFullPlayerData(changes.newlyVisible) 
                         : null,
                     clientsToUnload = hasVisibilityChanges && changes.noLongerVisible.Any() 
-                        ? changes.noLongerVisible.ToArray() 
+                        ? changes.noLongerVisible.ToArray()
                         : null
                 };
                 

@@ -111,7 +111,7 @@ public class GameWorldService
         
         return new
         {
-            id = client.Player.UserId.ToString(),
+            id = client.Player.UserId,  // Keep as int
             username = client.Username,
             xPos = client.Player.X,
             yPos = client.Player.Y,

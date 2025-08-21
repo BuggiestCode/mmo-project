@@ -531,34 +531,42 @@ public class WebSocketMiddleware
             type = "spawnPlayer",
             player = new
             {
-                id = client.Player.UserId.ToString(),
+                id = client.Player.UserId,
                 username = client.Username,
                 xPos = client.Player.X,
                 yPos = client.Player.Y
             }
         };
         
-        // Send to all clients (including self) - REVERT TO ORIGINAL
-        await _gameWorld.BroadcastToAllAsync(spawnMessage);
+        // Send spawn message to self immediately (player needs to see themselves)
+        await client.SendMessageAsync(spawnMessage);
         
-        // Send other players to the new client (using helper method) - REVERT TO ORIGINAL  
-        var otherPlayerIds = _gameWorld.GetAuthenticatedClients()
-            .Where(c => c.Player != null && c.Player.UserId != client.Player.UserId)
-            .Select(c => c.Player!.UserId)
-            .ToList();
+        // Initialize visibility tracking for the new player
+        var (newlyVisible, _) = _terrain.UpdatePlayerVisibility(client.Player.UserId, client.Player.X, client.Player.Y);
         
-        if (otherPlayerIds.Any())
+        // Send immediate state update to new client with visible players (if any)
+        if (newlyVisible.Any())
         {
-            var otherPlayersData = _gameWorld.GetFullPlayerData(otherPlayerIds);
+            var visiblePlayersData = _gameWorld.GetFullPlayerData(newlyVisible);
             await client.SendMessageAsync(new
             {
-                type = "spawnOtherPlayers",
-                players = otherPlayersData
+                type = "state",
+                selfStateUpdate = (object?)null,
+                players = (object?)null, 
+                clientsToLoad = visiblePlayersData,
+                clientsToUnload = (object?)null
             });
         }
         
-        // Initialize visibility tracking for the new player
-        _terrain.UpdatePlayerVisibility(client.Player.UserId, client.Player.X, client.Player.Y);
+        // Trigger visibility updates for all other players to check if they can now see the new player
+        // This will be processed in the next game tick via the state update system
+        foreach (var otherClient in _gameWorld.GetAuthenticatedClients())
+        {
+            if (otherClient.Player != null && otherClient.Player.UserId != client.Player.UserId)
+            {
+                _terrain.UpdatePlayerVisibility(otherClient.Player.UserId, otherClient.Player.X, otherClient.Player.Y);
+            }
+        }
     }
     
     private async Task HandleDisconnectAsync(ConnectedClient client)

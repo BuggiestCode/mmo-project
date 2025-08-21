@@ -161,12 +161,10 @@ public class TerrainService
             if (!wasVisible && isVisible)
             {
                 newlyVisible.Add(otherPlayerId);
-                _logger.LogInformation($"Player {playerId} can now see player {otherPlayerId} (chunk {otherPlayerChunk})");
             }
             else if (wasVisible && !isVisible)
             {
                 noLongerVisible.Add(otherPlayerId);
-                _logger.LogInformation($"Player {playerId} can no longer see player {otherPlayerId} (chunk {otherPlayerChunk})");
             }
         }
         
@@ -176,7 +174,6 @@ public class TerrainService
         if (newlyVisible.Any() || noLongerVisible.Any())
         {
             _pendingVisibilityChanges[playerId] = (newlyVisible, noLongerVisible);
-            _logger.LogInformation($"Player {playerId} visibility update: +{newlyVisible.Count} -{noLongerVisible.Count} players");
         }
         
         return (newlyVisible, noLongerVisible);
