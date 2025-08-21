@@ -9,6 +9,10 @@ public class Player
     public bool IsDirty { get; set; }
     public bool DoNetworkHeartbeat { get; set; }
     
+    // Terrain/Visibility properties (moved from TerrainService dictionaries)
+    public string? CurrentChunk { get; set; }
+    public HashSet<string> VisibilityChunks { get; set; } = new();
+    
     private List<(float x, float y)> _currentPath = new();
     private (float x, float y)? _nextTile;
     private bool _isMoving;

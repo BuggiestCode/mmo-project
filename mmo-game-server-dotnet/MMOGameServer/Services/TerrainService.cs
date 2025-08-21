@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using MMOGameServer.Models;
 
 namespace MMOGameServer.Services;
 
@@ -10,14 +11,14 @@ public class TerrainChunk
     public float[]? Heights { get; set; }  // Flat array matching Unity/JS
     public bool[]? Walkability { get; set; }  // Flat array matching Unity/JS  
     public DateTime LastAccessed { get; set; }
+    
+    // Player tracking (moved from TerrainService dictionary)
+    public HashSet<int> PlayersOnChunk { get; set; } = new();
 }
 
 public class TerrainService
 {
     private readonly ConcurrentDictionary<string, TerrainChunk> _chunks = new();
-    private readonly ConcurrentDictionary<int, string> _playerChunks = new();
-    private readonly ConcurrentDictionary<string, int> _chunkRefCounts = new();
-    private readonly ConcurrentDictionary<int, HashSet<string>> _playerVisibilityChunks = new();
     private readonly ConcurrentDictionary<int, (HashSet<int> newlyVisible, HashSet<int> noLongerVisible)> _pendingVisibilityChanges = new();
     private readonly string _terrainPath;
     private readonly int _chunkSize = 16;
@@ -85,40 +86,91 @@ public class TerrainService
         return (chunkX, chunkY, localX, localY);
     }
 
-    public bool UpdatePlayerChunk(int playerId, float worldX, float worldY)
+    public (HashSet<int> newlyVisible, HashSet<int> noLongerVisible) UpdatePlayerChunk(Player player, float worldX, float worldY)
     {
         var (chunkX, chunkY) = WorldPositionToChunkCoord(worldX, worldY);
         var newChunkKey = $"{chunkX},{chunkY}";
+        var oldChunkKey = player.CurrentChunk;
         
-        _playerChunks.TryGetValue(playerId, out var previousChunkKey);
-        
-        if (previousChunkKey == newChunkKey)
+        // No chunk change, no visibility changes
+        if (oldChunkKey == newChunkKey)
         {
-            return true;
+            return (new HashSet<int>(), new HashSet<int>());
         }
         
+        // Ensure new chunk is loaded
         if (!_chunks.ContainsKey(newChunkKey))
         {
-            _logger.LogInformation($"Player {playerId} needs chunk {newChunkKey} - loading synchronously");
+            _logger.LogInformation($"Player {player.UserId} needs chunk {newChunkKey} - loading synchronously");
             if (!LoadChunkSync(newChunkKey))
             {
-                _logger.LogError($"Failed to load chunk {newChunkKey} for player {playerId}");
-                return false;
+                _logger.LogError($"Failed to load chunk {newChunkKey} for player {player.UserId}");
+                return (new HashSet<int>(), new HashSet<int>());
             }
         }
         
-        if (!string.IsNullOrEmpty(previousChunkKey))
+        // Update chunk membership
+        if (!string.IsNullOrEmpty(oldChunkKey) && _chunks.TryGetValue(oldChunkKey, out var oldChunk))
         {
-            _chunkRefCounts.AddOrUpdate(previousChunkKey, 0, (key, count) => Math.Max(0, count - 1));
+            oldChunk.PlayersOnChunk.Remove(player.UserId);
         }
         
-        _chunkRefCounts.AddOrUpdate(newChunkKey, 1, (key, count) => count + 1);
-        _playerChunks[playerId] = newChunkKey;
-
-        // Update visibility whenever player chunk changes
-        var (newlyVisible, noLongerVisible) = UpdatePlayerVisibility(playerId, worldX, worldY);
+        if (_chunks.TryGetValue(newChunkKey, out var newChunk))
+        {
+            newChunk.PlayersOnChunk.Add(player.UserId);
+        }
         
-        return true;
+        player.CurrentChunk = newChunkKey;
+        
+        // Calculate visibility changes
+        var newVisibilityChunks = CalculateVisibilityChunks(worldX, worldY);
+        var oldVisibilityChunks = player.VisibilityChunks;
+        
+        var addedChunks = newVisibilityChunks.Except(oldVisibilityChunks);
+        var removedChunks = oldVisibilityChunks.Except(newVisibilityChunks);
+        
+        var newlyVisible = new HashSet<int>();
+        var noLongerVisible = new HashSet<int>();
+        
+        // Efficient lookup: only check chunks that changed
+        foreach (var chunkKey in addedChunks)
+        {
+            if (_chunks.TryGetValue(chunkKey, out var chunk))
+            {
+                newlyVisible.UnionWith(chunk.PlayersOnChunk.Where(p => p != player.UserId));
+            }
+        }
+        
+        foreach (var chunkKey in removedChunks)
+        {
+            if (_chunks.TryGetValue(chunkKey, out var chunk))
+            {
+                noLongerVisible.UnionWith(chunk.PlayersOnChunk.Where(p => p != player.UserId));
+            }
+        }
+        
+        player.VisibilityChunks = newVisibilityChunks;
+        
+        // Store visibility changes for this tick
+        if (newlyVisible.Any() || noLongerVisible.Any())
+        {
+            _pendingVisibilityChanges[player.UserId] = (newlyVisible, noLongerVisible);
+            _logger.LogInformation($"Player {player.UserId} visibility update: +{newlyVisible.Count} -{noLongerVisible.Count} players");
+        }
+        
+        // Handle bidirectional visibility (symmetric updates)
+        foreach (var otherPlayerId in newlyVisible.Union(noLongerVisible))
+        {
+            if (!_pendingVisibilityChanges.ContainsKey(otherPlayerId))
+                _pendingVisibilityChanges[otherPlayerId] = (new HashSet<int>(), new HashSet<int>());
+                
+            if (newlyVisible.Contains(otherPlayerId))
+                _pendingVisibilityChanges[otherPlayerId].Item1.Add(player.UserId);
+            if (noLongerVisible.Contains(otherPlayerId))
+                _pendingVisibilityChanges[otherPlayerId].Item2.Add(player.UserId);
+        }
+        
+        return (newlyVisible, noLongerVisible);
     }
     
     private HashSet<string> CalculateVisibilityChunks(float worldX, float worldY)
@@ -138,76 +190,6 @@ public class TerrainService
         return visibilityChunks;
     }
     
-    public (HashSet<int> newlyVisible, HashSet<int> noLongerVisible) UpdatePlayerVisibility(int playerId, float worldX, float worldY)
-    {
-        var newVisibilityChunks = CalculateVisibilityChunks(worldX, worldY);
-        var oldVisibilityChunks = _playerVisibilityChunks.GetValueOrDefault(playerId, new HashSet<string>());
-        
-        var newlyVisible = new HashSet<int>();
-        var noLongerVisible = new HashSet<int>();
-        
-        // Check ALL other players to see who's now in/out of range
-        foreach (var otherPlayerId in _playerChunks.Keys)
-        {
-            if (otherPlayerId == playerId) continue;
-            
-            var otherPlayerChunk = _playerChunks[otherPlayerId];
-            
-            // Was other player visible before?
-            bool wasVisible = oldVisibilityChunks.Contains(otherPlayerChunk);
-            // Is other player visible now?
-            bool isVisible = newVisibilityChunks.Contains(otherPlayerChunk);
-            
-            if (!wasVisible && isVisible)
-            {
-                newlyVisible.Add(otherPlayerId);
-            }
-            else if (wasVisible && !isVisible)
-            {
-                noLongerVisible.Add(otherPlayerId);
-            }
-        }
-        
-        _playerVisibilityChunks[playerId] = newVisibilityChunks;
-        
-        // Store visibility changes for this tick
-        if (newlyVisible.Any() || noLongerVisible.Any())
-        {
-            _pendingVisibilityChanges[playerId] = (newlyVisible, noLongerVisible);
-        }
-        
-        return (newlyVisible, noLongerVisible);
-    }
-    
-    // Debug helper methods
-    public string GetPlayerVisibilityInfo(int playerId)
-    {
-        if (!_playerChunks.TryGetValue(playerId, out var playerChunk))
-            return $"Player {playerId} not found";
-            
-        var visibilityChunks = _playerVisibilityChunks.GetValueOrDefault(playerId, new HashSet<string>());
-        var visiblePlayers = new List<int>();
-        
-        foreach (var otherPlayerId in _playerChunks.Keys)
-        {
-            if (otherPlayerId == playerId) continue;
-            var otherChunk = _playerChunks[otherPlayerId];
-            if (visibilityChunks.Contains(otherChunk))
-            {
-                visiblePlayers.Add(otherPlayerId);
-            }
-        }
-        
-        return $"Player {playerId} at chunk {playerChunk}, can see chunks [{string.Join(", ", visibilityChunks)}], can see players [{string.Join(", ", visiblePlayers)}]";
-    }
-    
-    public void LogAllPlayersVisibility()
-    {
-        foreach (var playerId in _playerChunks.Keys)
-        {
-            _logger.LogInformation(GetPlayerVisibilityInfo(playerId));
-        }
-    }
     
     // Methods for GameLoopService to collect visibility changes
     public Dictionary<int, (HashSet<int> newlyVisible, HashSet<int> noLongerVisible)> GetAndClearVisibilityChanges()
@@ -217,34 +199,45 @@ public class TerrainService
         return changes;
     }
     
-    public HashSet<int> GetVisiblePlayers(int playerId)
+    public HashSet<int> GetVisiblePlayers(Player player)
     {
-        var visibilityChunks = _playerVisibilityChunks.GetValueOrDefault(playerId, new HashSet<string>());
         var visiblePlayers = new HashSet<int>();
         
-        foreach (var otherPlayerId in _playerChunks.Keys)
+        foreach (var chunkKey in player.VisibilityChunks)
         {
-            if (otherPlayerId == playerId) continue;
-            var otherChunk = _playerChunks[otherPlayerId];
-            if (visibilityChunks.Contains(otherChunk))
+            if (_chunks.TryGetValue(chunkKey, out var chunk))
             {
-                visiblePlayers.Add(otherPlayerId);
+                visiblePlayers.UnionWith(chunk.PlayersOnChunk.Where(p => p != player.UserId));
             }
         }
         
         return visiblePlayers;
     }
-
-    public void RemovePlayer(int playerId)
+    
+    // Debug helper methods
+    public string GetPlayerVisibilityInfo(Player player)
     {
-        if (_playerChunks.TryRemove(playerId, out var chunkKey))
+        if (string.IsNullOrEmpty(player.CurrentChunk))
+            return $"Player {player.UserId} not found";
+            
+        var visiblePlayers = GetVisiblePlayers(player);
+        return $"Player {player.UserId} at chunk {player.CurrentChunk}, can see chunks [{string.Join(", ", player.VisibilityChunks)}], can see players [{string.Join(", ", visiblePlayers)}]";
+    }
+
+    public void RemovePlayer(Player player)
+    {
+        if (!string.IsNullOrEmpty(player.CurrentChunk) && _chunks.TryGetValue(player.CurrentChunk, out var chunk))
         {
-            _chunkRefCounts.AddOrUpdate(chunkKey, 0, (key, count) => Math.Max(0, count - 1));
-            _logger.LogDebug($"Removed player {playerId} from chunk tracking");
+            chunk.PlayersOnChunk.Remove(player.UserId);
+            _logger.LogDebug($"Removed player {player.UserId} from chunk tracking");
         }
         
-        // Also remove from visibility tracking
-        _playerVisibilityChunks.TryRemove(playerId, out _);
+        // Clear player's chunk and visibility data
+        player.CurrentChunk = null;
+        player.VisibilityChunks.Clear();
+        
+        // Remove any pending visibility changes
+        _pendingVisibilityChanges.TryRemove(player.UserId, out _);
     }
 
     private bool LoadChunkSync(string chunkKey)
@@ -367,8 +360,7 @@ public class TerrainService
         
         foreach (var kvp in _chunks)
         {
-            var refCount = _chunkRefCounts.GetOrAdd(kvp.Key, 0);
-            if (refCount == 0 && kvp.Value.LastAccessed < cutoffTime)
+            if (kvp.Value.PlayersOnChunk.Count == 0 && kvp.Value.LastAccessed < cutoffTime)
             {
                 chunksToRemove.Add(kvp.Key);
             }
@@ -378,7 +370,6 @@ public class TerrainService
         {
             if (_chunks.TryRemove(chunkKey, out _))
             {
-                _chunkRefCounts.TryRemove(chunkKey, out _);
                 _logger.LogDebug($"Unloaded unused chunk {chunkKey}");
             }
         }

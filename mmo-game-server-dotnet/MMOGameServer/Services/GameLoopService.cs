@@ -87,11 +87,11 @@ public class GameLoopService : BackgroundService
         {
             if (nextMove.HasValue)
             {
-                // Update chunk tracking (this calls UpdatePlayerVisibility internally)
-                _terrainService.UpdatePlayerChunk(client.Player!.UserId, nextMove.Value.x, nextMove.Value.y);
+                // Update chunk tracking and get visibility changes
+                _terrainService.UpdatePlayerChunk(client.Player!, nextMove.Value.x, nextMove.Value.y);
                 
                 // Update player position
-                client.Player.UpdatePosition(nextMove.Value.x, nextMove.Value.y);
+                client.Player!.UpdatePosition(nextMove.Value.x, nextMove.Value.y);
             }
         }
         
@@ -117,7 +117,7 @@ public class GameLoopService : BackgroundService
             
             var playerId = client.Player.UserId;
             var hasVisibilityChanges = visibilityChanges.TryGetValue(playerId, out var changes);
-            var visiblePlayerIds = _terrainService.GetVisiblePlayers(playerId);
+            var visiblePlayerIds = _terrainService.GetVisiblePlayers(client.Player);
             
             // Separate self update from other players
             object? selfUpdate = null;
@@ -283,7 +283,7 @@ public class GameLoopService : BackgroundService
                 client.Player.Facing);
 
             // Remove from terrain tracking
-            _terrainService.RemovePlayer(client.Player.UserId);
+            _terrainService.RemovePlayer(client.Player);
         }
         
         // Remove client and close connection

@@ -151,9 +151,10 @@ public class WebSocketMiddleware
                     break;
 
                 case "visLog":
-                    if (client.IsAuthenticated)
+                    if (client.IsAuthenticated && client.Player != null)
                     {
-                        _terrain.LogAllPlayersVisibility();
+                        var info = _terrain.GetPlayerVisibilityInfo(client.Player);
+                        _logger.LogInformation(info);
                     }
                     break;
                     
@@ -517,13 +518,8 @@ public class WebSocketMiddleware
     {
         if (client.Player == null) return;
         
-        // Ensure spawn chunk is loaded
-        var chunkReady = _terrain.UpdatePlayerChunk(client.Player.UserId, client.Player.X, client.Player.Y);
-        if (!chunkReady)
-        {
-            _logger.LogError($"Failed to load spawn chunk for player {client.Player.UserId}");
-            return;
-        }
+        // Ensure spawn chunk is loaded and get initial visibility
+        var (newlyVisible, _) = _terrain.UpdatePlayerChunk(client.Player, client.Player.X, client.Player.Y);
         
         // Build spawn message
         var spawnMessage = new
@@ -541,9 +537,6 @@ public class WebSocketMiddleware
         // Send spawn message to self immediately (player needs to see themselves)
         await client.SendMessageAsync(spawnMessage);
         
-        // Initialize visibility tracking for the new player
-        var (newlyVisible, _) = _terrain.UpdatePlayerVisibility(client.Player.UserId, client.Player.X, client.Player.Y);
-        
         // Send immediate state update to new client with visible players (if any)
         if (newlyVisible.Any())
         {
@@ -556,16 +549,6 @@ public class WebSocketMiddleware
                 clientsToLoad = visiblePlayersData,
                 clientsToUnload = (object?)null
             });
-        }
-        
-        // Trigger visibility updates for all other players to check if they can now see the new player
-        // This will be processed in the next game tick via the state update system
-        foreach (var otherClient in _gameWorld.GetAuthenticatedClients())
-        {
-            if (otherClient.Player != null && otherClient.Player.UserId != client.Player.UserId)
-            {
-                _terrain.UpdatePlayerVisibility(otherClient.Player.UserId, otherClient.Player.X, otherClient.Player.Y);
-            }
         }
     }
     
@@ -581,7 +564,7 @@ public class WebSocketMiddleware
                 client.Player.Facing);
             
             // Remove from terrain tracking
-            _terrain.RemovePlayer(client.Player.UserId);
+            _terrain.RemovePlayer(client.Player);
             
             // Broadcast quit to other players
             await _gameWorld.BroadcastToAllAsync(
