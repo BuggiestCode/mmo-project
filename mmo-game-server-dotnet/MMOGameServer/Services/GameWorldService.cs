@@ -115,7 +115,13 @@ public class GameWorldService
             username = client.Username,
             xPos = client.Player.X,
             yPos = client.Player.Y,
-            facing = client.Player.Facing
+            facing = client.Player.Facing,
+            hairColSwatchIndex = client.Player.HairColSwatchIndex,
+            skinColSwatchIndex = client.Player.SkinColSwatchIndex,
+            underColSwatchIndex = client.Player.UnderColSwatchIndex,
+            bootsColSwatchIndex = client.Player.BootsColSwatchIndex,
+            hairStyleIndex = client.Player.HairStyleIndex,
+            isMale = client.Player.IsMale
         };
     }
     

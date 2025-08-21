@@ -159,7 +159,28 @@ public class WebSocketMiddleware
                 case "saveCharacterLookAttributes":
                     if (client.IsAuthenticated && client.Player != null)
                     {
+                        // Save to database
                         await _database.SavePlayerLookAttributes(client.Player.UserId, root);
+                        
+                        // Update the Player object with new values
+                        if (root.TryGetProperty("hairColSwatchIndex", out var hairCol))
+                            client.Player.HairColSwatchIndex = hairCol.TryGetInt16(out var h) ? h : (short)0;
+                        if (root.TryGetProperty("skinColSwatchIndex", out var skinCol))
+                            client.Player.SkinColSwatchIndex = skinCol.TryGetInt16(out var s) ? s : (short)0;
+                        if (root.TryGetProperty("underColSwatchIndex", out var underCol))
+                            client.Player.UnderColSwatchIndex = underCol.TryGetInt16(out var u) ? u : (short)0;
+                        if (root.TryGetProperty("bootsColSwatchIndex", out var bootsCol))
+                            client.Player.BootsColSwatchIndex = bootsCol.TryGetInt16(out var b) ? b : (short)0;
+                        if (root.TryGetProperty("hairStyleIndex", out var hairStyle))
+                            client.Player.HairStyleIndex = hairStyle.TryGetInt16(out var hs) ? hs : (short)0;
+                        if (root.TryGetProperty("isMale", out var isMale))
+                        {
+                            if (isMale.ValueKind == JsonValueKind.True || isMale.ValueKind == JsonValueKind.False)
+                                client.Player.IsMale = isMale.GetBoolean();
+                        }
+                        
+                        // Mark player as dirty to trigger state update
+                        client.Player.IsDirty = true;
                     }
                     break;
                 case "chat":
@@ -546,7 +567,14 @@ public class WebSocketMiddleware
                 id = client.Player.UserId,
                 username = client.Username,
                 xPos = client.Player.X,
-                yPos = client.Player.Y
+                yPos = client.Player.Y,
+                facing = client.Player.Facing,
+                hairColSwatchIndex = client.Player.HairColSwatchIndex,
+                skinColSwatchIndex = client.Player.SkinColSwatchIndex,
+                underColSwatchIndex = client.Player.UnderColSwatchIndex,
+                bootsColSwatchIndex = client.Player.BootsColSwatchIndex,
+                hairStyleIndex = client.Player.HairStyleIndex,
+                isMale = client.Player.IsMale
             },
             characterCreatorCompleted = client.Player.CharacterCreatorCompleted
         };

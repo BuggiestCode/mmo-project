@@ -60,7 +60,10 @@ public class DatabaseService
 
         // Try to load existing player
         using var selectCmd = new NpgsqlCommand(
-            "SELECT user_id, x, y, facing, character_creator_complete FROM players WHERE user_id = @userId", conn);
+            "SELECT user_id, x, y, facing, character_creator_complete, " +
+            "hair_swatch_col_index, skin_swatch_col_index, under_swatch_col_index, " +
+            "boots_swatch_col_index, hair_style_index, is_male " +
+            "FROM players WHERE user_id = @userId", conn);
         selectCmd.Parameters.AddWithValue("userId", userId);
 
         using var reader = await selectCmd.ExecuteReaderAsync();
@@ -73,19 +76,36 @@ public class DatabaseService
             );
             player.Facing = reader.GetInt32(3);
             player.CharacterCreatorCompleted = reader.GetBoolean(4);
-            Console.WriteLine($"Loaded existing player {userId} at ({player.X}, {player.Y})");
+            // Check for NULL values and use defaults if needed
+            player.HairColSwatchIndex = reader.IsDBNull(5) ? (short)0 : reader.GetInt16(5);
+            player.SkinColSwatchIndex = reader.IsDBNull(6) ? (short)0 : reader.GetInt16(6);
+            player.UnderColSwatchIndex = reader.IsDBNull(7) ? (short)0 : reader.GetInt16(7);
+            player.BootsColSwatchIndex = reader.IsDBNull(8) ? (short)0 : reader.GetInt16(8);
+            player.HairStyleIndex = reader.IsDBNull(9) ? (short)0 : reader.GetInt16(9);
+            player.IsMale = reader.IsDBNull(10) ? true : reader.GetBoolean(10);
+            Console.WriteLine($"Loaded existing player {userId} at ({player.X}, {player.Y}) with look: hair={player.HairColSwatchIndex}, skin={player.SkinColSwatchIndex}, under={player.UnderColSwatchIndex}, boots={player.BootsColSwatchIndex}, style={player.HairStyleIndex}, isMale={player.IsMale}");
             return player;
         }
 
         // Create new player
         await reader.CloseAsync();
         using var insertCmd = new NpgsqlCommand(
-            "INSERT INTO players (user_id, x, y, facing, character_creator_complete) VALUES (@userId, @x, @y, @facing, @characterCreatorComplete)", conn);
+            "INSERT INTO players (user_id, x, y, facing, character_creator_complete, " +
+            "hair_swatch_col_index, skin_swatch_col_index, under_swatch_col_index, " +
+            "boots_swatch_col_index, hair_style_index, is_male) " +
+            "VALUES (@userId, @x, @y, @facing, @characterCreatorComplete, " +
+            "@hairCol, @skinCol, @underCol, @bootsCol, @hairStyle, @isMale)", conn);
         insertCmd.Parameters.AddWithValue("userId", userId);
         insertCmd.Parameters.AddWithValue("x", 0);
         insertCmd.Parameters.AddWithValue("y", 0);
         insertCmd.Parameters.AddWithValue("facing", 0);
         insertCmd.Parameters.AddWithValue("characterCreatorComplete", false);
+        insertCmd.Parameters.AddWithValue("hairCol", (short)0);
+        insertCmd.Parameters.AddWithValue("skinCol", (short)0);
+        insertCmd.Parameters.AddWithValue("underCol", (short)0);
+        insertCmd.Parameters.AddWithValue("bootsCol", (short)0);
+        insertCmd.Parameters.AddWithValue("hairStyle", (short)0);
+        insertCmd.Parameters.AddWithValue("isMale", true);
         
         await insertCmd.ExecuteNonQueryAsync();
         Console.WriteLine($"Created new player {userId} at spawn");
@@ -93,6 +113,7 @@ public class DatabaseService
         // Character creator is not completed by default
         Player newPlayer = new Player(userId, 0, 0);
         newPlayer.CharacterCreatorCompleted = false;
+        // Look attributes default to 0 (already set by default in Player class)
 
         return newPlayer;
     }
@@ -265,6 +286,13 @@ public class DatabaseService
                 hairStyleIndex = hairStyleElement.TryGetInt16(out var hairStyleVal) ? hairStyleVal : (short)0;
             }
 
+            bool isMale = true;
+            if (message.TryGetProperty("isMale", out var isMaleElement))
+            {
+                if (isMaleElement.ValueKind == JsonValueKind.True || isMaleElement.ValueKind == JsonValueKind.False)
+                    isMale = isMaleElement.GetBoolean();
+            }
+
             using var conn = new NpgsqlConnection(_gameConnectionString);
             await conn.OpenAsync();
 
@@ -274,7 +302,8 @@ public class DatabaseService
                 " skin_swatch_col_index = @skinColSwatchIndex," +
                 " under_swatch_col_index = @underColSwatchIndex," +
                 " boots_swatch_col_index = @bootsColSwatchIndex," +
-                " hair_style_index = @hairStyleIndex" +
+                " hair_style_index = @hairStyleIndex," +
+                " is_male = @isMale" +
                 " WHERE user_id = @userId", conn);
 
             cmd.Parameters.AddWithValue("userId", userId);
@@ -283,6 +312,7 @@ public class DatabaseService
             cmd.Parameters.AddWithValue("underColSwatchIndex", underColSwatchIndex);
             cmd.Parameters.AddWithValue("bootsColSwatchIndex", bootsColSwatchIndex);
             cmd.Parameters.AddWithValue("hairStyleIndex", hairStyleIndex);
+            cmd.Parameters.AddWithValue("isMale", isMale);
 
             await cmd.ExecuteNonQueryAsync();
             Console.WriteLine($"Saved player {userId} look attributes.");

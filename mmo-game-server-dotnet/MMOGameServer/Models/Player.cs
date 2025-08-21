@@ -11,6 +11,14 @@ public class Player
     
     public bool CharacterCreatorCompleted{ get; set; }
 
+    // Player look attributes
+    public short HairColSwatchIndex { get; set; }
+    public short SkinColSwatchIndex { get; set; }
+    public short UnderColSwatchIndex { get; set; }
+    public short BootsColSwatchIndex { get; set; }
+    public short HairStyleIndex { get; set; }
+    public bool IsMale { get; set; }
+
     // Terrain/Visibility properties (moved from TerrainService dictionaries)
     public string? CurrentChunk { get; set; }
     public HashSet<string> VisibilityChunks { get; set; } = new();
@@ -102,7 +110,13 @@ public class Player
             id = UserId,
             x = X,
             y = Y,
-            isMoving = _isMoving
+            isMoving = _isMoving,
+            hairColSwatchIndex = HairColSwatchIndex,
+            skinColSwatchIndex = SkinColSwatchIndex,
+            underColSwatchIndex = UnderColSwatchIndex,
+            bootsColSwatchIndex = BootsColSwatchIndex,
+            hairStyleIndex = HairStyleIndex,
+            isMale = IsMale
         };
     }
 }
