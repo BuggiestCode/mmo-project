@@ -1,4 +1,5 @@
 using Npgsql;
+using System.Text.Json;
 using MMOGameServer.Models;
 
 namespace MMOGameServer.Services;
@@ -228,6 +229,69 @@ public class DatabaseService
             Console.WriteLine($"Failed to remove session: {ex.Message}");
         }
     }
+
+    public async Task SavePlayerLookAttributes(int userId, JsonElement message)
+    {
+        try
+        {
+            // Parse JSON properties with defaults
+            short hairColSwatchIndex = 0;
+            if (message.TryGetProperty("hairColSwatchIndex", out var hairColElement))
+            {
+                hairColSwatchIndex = hairColElement.TryGetInt16(out var hairVal) ? hairVal : (short)0;
+            }
+
+            short skinColSwatchIndex = 0;
+            if (message.TryGetProperty("skinColSwatchIndex", out var skinColElement))
+            {
+                skinColSwatchIndex = skinColElement.TryGetInt16(out var skinVal) ? skinVal : (short)0;
+            }
+
+            short underColSwatchIndex = 0;
+            if (message.TryGetProperty("underColSwatchIndex", out var underColElement))
+            {
+                underColSwatchIndex = underColElement.TryGetInt16(out var underVal) ? underVal : (short)0;
+            }
+
+            short bootsColSwatchIndex = 0;
+            if (message.TryGetProperty("bootsColSwatchIndex", out var bootsColElement))
+            {
+                bootsColSwatchIndex = bootsColElement.TryGetInt16(out var bootsVal) ? bootsVal : (short)0;
+            }
+
+            short hairStyleIndex = 0;
+            if (message.TryGetProperty("hairStyleIndex", out var hairStyleElement))
+            {
+                hairStyleIndex = hairStyleElement.TryGetInt16(out var hairStyleVal) ? hairStyleVal : (short)0;
+            }
+
+            using var conn = new NpgsqlConnection(_gameConnectionString);
+            await conn.OpenAsync();
+
+            using var cmd = new NpgsqlCommand(
+                "UPDATE players SET" +
+                " hair_swatch_col_index = @hairColSwatchIndex," +
+                " skin_swatch_col_index = @skinColSwatchIndex," +
+                " under_swatch_col_index = @underColSwatchIndex," +
+                " boots_swatch_col_index = @bootsColSwatchIndex," +
+                " hair_style_index = @hairStyleIndex" +
+                " WHERE user_id = @userId", conn);
+
+            cmd.Parameters.AddWithValue("userId", userId);
+            cmd.Parameters.AddWithValue("hairColSwatchIndex", hairColSwatchIndex);
+            cmd.Parameters.AddWithValue("skinColSwatchIndex", skinColSwatchIndex);
+            cmd.Parameters.AddWithValue("underColSwatchIndex", underColSwatchIndex);
+            cmd.Parameters.AddWithValue("bootsColSwatchIndex", bootsColSwatchIndex);
+            cmd.Parameters.AddWithValue("hairStyleIndex", hairStyleIndex);
+
+            await cmd.ExecuteNonQueryAsync();
+            Console.WriteLine($"Saved player {userId} look attributes.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to save player {userId} look attributes: {ex.Message}");
+        }
+    }
     
     public async Task SavePlayerPositionAsync(int userId, float x, float y, int facing)
     {
@@ -235,14 +299,14 @@ public class DatabaseService
         {
             using var conn = new NpgsqlConnection(_gameConnectionString);
             await conn.OpenAsync();
-            
+
             using var cmd = new NpgsqlCommand(
                 "UPDATE players SET x = @x, y = @y, facing = @facing WHERE user_id = @userId", conn);
             cmd.Parameters.AddWithValue("userId", userId);
             cmd.Parameters.AddWithValue("x", (int)x);
             cmd.Parameters.AddWithValue("y", (int)y);
             cmd.Parameters.AddWithValue("facing", facing);
-            
+
             await cmd.ExecuteNonQueryAsync();
             Console.WriteLine($"Saved player {userId} position ({x}, {y})");
         }

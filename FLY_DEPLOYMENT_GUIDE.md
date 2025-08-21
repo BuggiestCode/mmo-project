@@ -248,3 +248,29 @@ COMMIT;
 BEGIN;
 DELETE FROM users WHERE id = 24;
 COMMIT;
+
+### Add column to database (non destructively) via CLI (proxy tunnel tool)
+ALTER TABLE players ADD COLUMN new_column_name SMALLINT DEFAULT 0;
+
+### Modify data via CLI (proxy tunnel tool)
+Update all existing rows:
+UPDATE players SET column_name = new_value;
+
+Update a specific entry by ID:
+UPDATE players SET column_name = new_value WHERE id = 123;
+
+Update based on other conditions:
+UPDATE players SET column_name = new_value WHERE username = 'player_name';
+
+Update multiple columns at once:
+UPDATE players SET column_name = new_value, another_column = another_value WHERE id = 123;
+
+Examples:
+-- Set all players' eye_color_index to 1
+UPDATE players SET eye_color_index = 1;
+
+-- Set specific player's eye color
+UPDATE players SET eye_color_index = 2 WHERE id = 5;
+
+-- Update multiple appearance values for one player
+UPDATE players SET eye_color_index = 2, hair_style_index = 3 WHERE username = 'john_doe';

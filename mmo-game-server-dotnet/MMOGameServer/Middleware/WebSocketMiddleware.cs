@@ -156,7 +156,12 @@ public class WebSocketMiddleware
                         await _database.CompleteCharacterCreationAsync(client.Player.UserId);
                     }
                     break;
-
+                case "saveCharacterLookAttributes":
+                    if (client.IsAuthenticated && client.Player != null)
+                    {
+                        await _database.SavePlayerLookAttributes(client.Player.UserId, root);
+                    }
+                    break;
                 case "chat":
                     if (client.IsAuthenticated)
                     {
