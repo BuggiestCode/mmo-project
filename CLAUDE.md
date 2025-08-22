@@ -8,7 +8,7 @@ This is a multiplayer online game (MMO) with a distributed architecture consisti
 - **Unity Frontend**: WebGL-based game client with real-time terrain rendering and multiplayer support
 - **Auth/Backend Server**: Node.js/Express server handling authentication and serving the Unity build
 - **Game World Servers**: WebSocket-based game servers managing player state and world simulation
-- **PostgreSQL Database**: Dual database setup for authentication and game state persistence
+- **PostgreSQL Database**: Dual database setup for authentication/sessions and game state persistence
 
 ## Architecture
 
@@ -145,14 +145,26 @@ fly deploy -a mmo-world1-staging --config worlds/staging/fly-world1-staging.toml
 - `mmo-backend/server.js` - Main Express server
 
 ### C# Game Server Structure (`mmo-game-server-dotnet/MMOGameServer/`)
-- `Program.cs` - ASP.NET Core startup and service configuration
-- `Middleware/WebSocketMiddleware.cs` - WebSocket connection handling and message routing
+- `Program.cs` - ASP.NET Core startup and service configuration with DI registration
+- `Middleware/WebSocketMiddleware.cs` - Simplified connection lifecycle management
+- `Messages/` - Message system architecture:
+  - `Contracts/` - Base interfaces and enums (`IGameMessage`, `MessageType`, `IMessageHandler`)
+  - `Requests/` - Strongly-typed request messages (`AuthMessage`, `MoveMessage`, etc.)
+  - `Responses/` - Typed response DTOs (`AuthResponse`, `ErrorResponse`)
+  - `Converters/` - Custom JSON polymorphic deserialization (`GameMessageJsonConverter`)
+- `Handlers/` - Message handlers organized by domain:
+  - `Authentication/` - `AuthHandler`, `LogoutHandler`
+  - `Player/` - `MoveHandler`, `CharacterCreationHandler`, `CharacterAttributesHandler`
+  - `Communication/` - `ChatHandler`, `PingHandler`
+  - `Session/` - `HeartbeatHandler`
 - `Services/` - Core game services using dependency injection:
   - `GameWorldService.cs` - Client connection management and broadcasting
   - `DatabaseService.cs` - PostgreSQL operations for auth and game data
   - `TerrainService.cs` - Chunk loading, caching, and walkability validation
   - `PathfindingService.cs` - A* pathfinding algorithm implementation
   - `GameLoopService.cs` - Background service for deterministic game tick processing
+  - `MessageProcessor.cs` - Message deserialization and routing coordination
+  - `MessageRouter.cs` - Handler discovery and dispatch service
 - `Models/` - Data models:
   - `Player.cs` - Player state, movement, and path management
   - `ConnectedClient.cs` - WebSocket client wrapper with authentication state
@@ -232,14 +244,29 @@ dotnet run --urls "http://localhost:8080"
 
 ## C# Game Server Architecture Details
 
-### Service-Oriented Design
-The C# game server uses ASP.NET Core's dependency injection system with singleton services to maintain shared state across WebSocket connections:
+### Message-Driven Architecture (Refactored 2024)
+The C# game server uses a modern message-driven architecture with strongly-typed handlers and dependency injection:
 
+**Core Services** (Singletons):
 - **GameWorldService**: Manages all connected clients and handles broadcasting
-- **DatabaseService**: Handles PostgreSQL connections for both auth and game databases
+- **DatabaseService**: Handles PostgreSQL connections for both auth and game databases  
 - **TerrainService**: Loads and caches terrain chunks with automatic cleanup
 - **PathfindingService**: Implements A* algorithm for server-side movement validation
 - **GameLoopService**: Background hosted service running at 500ms intervals
+- **MessageProcessor**: Coordinates message deserialization and routing
+- **MessageRouter**: Routes strongly-typed messages to appropriate handlers
+
+**Message System**:
+- **Strongly-typed messages**: All WebSocket messages use typed classes (AuthMessage, MoveMessage, etc.)
+- **Polymorphic deserialization**: Custom JsonConverter automatically routes messages based on "type" field
+- **Handler pattern**: Each message type has dedicated handler class (AuthHandler, MoveHandler, etc.)
+- **Type safety**: Compile-time checking prevents message format errors
+
+**Handler Organization**:
+- `Handlers/Authentication/`: AuthHandler, LogoutHandler
+- `Handlers/Player/`: MoveHandler, CharacterCreationHandler, CharacterAttributesHandler  
+- `Handlers/Communication/`: ChatHandler, PingHandler
+- `Handlers/Session/`: HeartbeatHandler
 
 ### Key Architectural Decisions
 
@@ -264,3 +291,31 @@ The C# game server uses ASP.NET Core's dependency injection system with singleto
 - Batched database operations where possible
 - Efficient JSON serialization using System.Text.Json
 - Connection pooling through Npgsql
+
+### Message System Benefits (2024 Refactor)
+
+**Type Safety & Developer Experience**:
+- Compile-time checking prevents message format errors
+- IntelliSense support for all message properties
+- Automatic JSON validation through strongly-typed classes
+- Clear separation between request/response message contracts
+
+**Maintainability & Extensibility**:
+- Each handler is isolated and unit-testable
+- Easy to add new message types without touching existing code
+- Clear handler organization by functional domain
+- SOLID principles applied (Single Responsibility, Dependency Inversion)
+
+**Adding New Message Types**:
+1. Create message class in `Messages/Requests/` implementing `IGameMessage`
+2. Add message type to `MessageType` enum
+3. Update `GameMessageJsonConverter` switch statement
+4. Create handler implementing `IMessageHandler<YourMessage>`
+5. Register handler in `Program.cs` dependency injection
+6. Handler automatically receives strongly-typed messages
+
+**Migration from Legacy System**:
+- WebSocketMiddleware reduced from 663 lines to 161 lines
+- All business logic moved to dedicated handler classes
+- Preserved all existing functionality and session management
+- No breaking changes to client-server protocol

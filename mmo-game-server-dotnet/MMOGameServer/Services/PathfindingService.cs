@@ -102,7 +102,8 @@ public class PathfindingService
         
         if (startXInt == endXInt && startYInt == endYInt)
         {
-            return new List<(float x, float y)>();
+            _logger.LogWarning($"End position is equal to start position ({endXInt}, {endYInt}).");
+            return null;
         }
         
         var openSet = new List<PathNode>();
