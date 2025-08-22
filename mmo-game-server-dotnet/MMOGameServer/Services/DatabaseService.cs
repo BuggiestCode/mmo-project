@@ -141,6 +141,7 @@ public class DatabaseService
                 using var reader = await checkCmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
+                    // I hate having to index the reader instead of by field ToDo: see if there's a better method
                     var existingWorld = reader.GetString(1);  // world
                     var connectionState = reader.GetInt32(2); // connection_state
                     var lastHeartbeat = reader.GetDateTime(3); // last_heartbeat

@@ -1,5 +1,11 @@
 using MMOGameServer.Services;
 using MMOGameServer.Middleware;
+using MMOGameServer.Messages.Contracts;
+using MMOGameServer.Messages.Requests;
+using MMOGameServer.Handlers.Authentication;
+using MMOGameServer.Handlers.Player;
+using MMOGameServer.Handlers.Communication;
+using MMOGameServer.Handlers.Session;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,11 +14,34 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.SetMinimumLevel(LogLevel.Debug);
 
-// Register services as singletons for shared state
+// Register core services as singletons for shared state
 builder.Services.AddSingleton<DatabaseService>();
 builder.Services.AddSingleton<GameWorldService>();
 builder.Services.AddSingleton<TerrainService>();
 builder.Services.AddSingleton<PathfindingService>();
+
+// Register message processing services
+builder.Services.AddSingleton<MessageRouter>();
+builder.Services.AddSingleton<MessageProcessor>();
+
+// Register message handlers
+// Authentication handlers
+builder.Services.AddScoped<IMessageHandler<AuthMessage>, AuthHandler>();
+builder.Services.AddScoped<IMessageHandler<LogoutMessage>, LogoutHandler>();
+builder.Services.AddScoped<IMessageHandler<QuitMessage>, LogoutHandler>();
+
+// Player handlers
+builder.Services.AddScoped<IMessageHandler<MoveMessage>, MoveHandler>();
+builder.Services.AddScoped<IMessageHandler<CompleteCharacterCreationMessage>, CharacterCreationHandler>();
+builder.Services.AddScoped<IMessageHandler<SaveCharacterLookAttributesMessage>, CharacterAttributesHandler>();
+
+// Communication handlers
+builder.Services.AddScoped<IMessageHandler<ChatMessage>, ChatHandler>();
+builder.Services.AddScoped<IMessageHandler<PingMessage>, PingHandler>();
+
+// Session handlers
+builder.Services.AddScoped<IMessageHandler<EnableHeartbeatMessage>, HeartbeatHandler>();
+builder.Services.AddScoped<IMessageHandler<DisableHeartbeatMessage>, HeartbeatHandler>();
 
 // Register GameLoopService as a hosted service
 builder.Services.AddHostedService<GameLoopService>();
