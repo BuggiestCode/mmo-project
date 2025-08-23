@@ -6,6 +6,7 @@ using MMOGameServer.Handlers.Authentication;
 using MMOGameServer.Handlers.Player;
 using MMOGameServer.Handlers.Communication;
 using MMOGameServer.Handlers.Session;
+using MMOGameServer.Handlers.Admin;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +20,7 @@ builder.Services.AddSingleton<DatabaseService>();
 builder.Services.AddSingleton<GameWorldService>();
 builder.Services.AddSingleton<TerrainService>();
 builder.Services.AddSingleton<PathfindingService>();
+builder.Services.AddSingleton<NPCService>();
 
 // Register message processing services
 builder.Services.AddSingleton<MessageRouter>();
@@ -43,6 +45,9 @@ builder.Services.AddScoped<IMessageHandler<PingMessage>, PingHandler>();
 builder.Services.AddScoped<IMessageHandler<EnableHeartbeatMessage>, HeartbeatHandler>();
 builder.Services.AddScoped<IMessageHandler<DisableHeartbeatMessage>, HeartbeatHandler>();
 
+// Admin handlers
+builder.Services.AddScoped<IMessageHandler<AdminCommandMessage>, AdminCommandHandler>();
+
 // Register GameLoopService as a hosted service
 builder.Services.AddHostedService<GameLoopService>();
 
@@ -65,6 +70,11 @@ var app = builder.Build();
 // Initialize database service
 var dbService = app.Services.GetRequiredService<DatabaseService>();
 await dbService.CleanupStaleSessionsAsync();
+
+// Wire up circular dependency between TerrainService and NPCService
+var terrainService = app.Services.GetRequiredService<TerrainService>();
+var npcService = app.Services.GetRequiredService<NPCService>();
+terrainService.SetNPCService(npcService);
 
 // Enable CORS
 app.UseCors();

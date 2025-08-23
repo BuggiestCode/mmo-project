@@ -4,6 +4,13 @@ using MMOGameServer.Models;
 
 namespace MMOGameServer.Services;
 
+public enum ChunkState
+{
+    Cold,  // Not loaded
+    Warm,  // Loaded but in cooldown period (no players, counting down to unload)
+    Hot    // Loaded and actively in use by players or zones
+}
+
 public class TerrainChunk
 {
     public int ChunkX { get; set; }
@@ -11,9 +18,22 @@ public class TerrainChunk
     public float[]? Heights { get; set; }  // Flat array matching Unity/JS
     public bool[]? Walkability { get; set; }  // Flat array matching Unity/JS  
     public DateTime LastAccessed { get; set; }
+    public ChunkState State { get; set; } = ChunkState.Hot;
+    public DateTime? CooldownStartTime { get; set; }
     
     // Player tracking (moved from TerrainService dictionary)
     public HashSet<int> PlayersOnChunk { get; set; } = new();
+    
+    // Zone tracking
+    public List<int> ZoneIds { get; set; } = new();  // Zones with root on this chunk
+    public List<(int rootChunkX, int rootChunkY, int zoneId)> ForeignZones { get; set; } = new();  // Foreign zones overlapping this chunk
+    
+    // NPC tracking
+    public HashSet<int> NPCsOnChunk { get; set; } = new();
+    
+    // Keep it simple: chunk with zones or players stays hot
+    // NPCService handles the sophisticated zone visibility logic separately
+    public bool ShouldStayHot => PlayersOnChunk.Count > 0 || ZoneIds.Count > 0 || ForeignZones.Count > 0;
 }
 
 public class TerrainService
@@ -22,8 +42,11 @@ public class TerrainService
     private readonly ConcurrentDictionary<int, (HashSet<int> newlyVisible, HashSet<int> noLongerVisible)> _pendingVisibilityChanges = new();
     private readonly string _terrainPath;
     private readonly int _chunkSize = 16;
+    private int _visibilityRadius = 1;  // Default 3x3 chunk area (configurable)
+    private readonly int _chunkCooldownSeconds = 30;
     private readonly Timer _cleanupTimer;
     private readonly ILogger<TerrainService> _logger;
+    private NPCService? _npcService;
 
     public TerrainService(ILogger<TerrainService> logger)
     {
@@ -58,6 +81,19 @@ public class TerrainService
         _cleanupTimer = new Timer(CleanupUnusedChunks, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
         _logger.LogInformation("Terrain service initialized with path: {Path}", _terrainPath);
     }
+    
+    public void SetNPCService(NPCService npcService)
+    {
+        _npcService = npcService;
+    }
+    
+    public void SetVisibilityRadius(int radius)
+    {
+        _visibilityRadius = Math.Max(1, radius);
+        _logger.LogInformation($"Visibility radius set to {_visibilityRadius} (viewing {_visibilityRadius * 2 + 1}x{_visibilityRadius * 2 + 1} chunks)");
+    }
+    
+    public int GetVisibilityRadius() => _visibilityRadius;
 
     public (int chunkX, int chunkY) WorldPositionToChunkCoord(float worldX, float worldY)
     {
@@ -92,22 +128,14 @@ public class TerrainService
         var newChunkKey = $"{chunkX},{chunkY}";
         var oldChunkKey = player.CurrentChunk;
         
-        // No chunk change, no visibility changes
-        if (oldChunkKey == newChunkKey)
-        {
-            return (new HashSet<int>(), new HashSet<int>());
-        }
+        // Calculate new visibility chunks
+        var newVisibilityChunks = CalculateVisibilityChunks(worldX, worldY);
         
-        // Ensure new chunk is loaded
-        if (!_chunks.ContainsKey(newChunkKey))
-        {
-            _logger.LogInformation($"Player {player.UserId} needs chunk {newChunkKey} - loading synchronously");
-            if (!LoadChunkSync(newChunkKey))
-            {
-                _logger.LogError($"Failed to load chunk {newChunkKey} for player {player.UserId}");
-                return (new HashSet<int>(), new HashSet<int>());
-            }
-        }
+        // Ensure all visibility chunks are loaded
+        EnsureChunksLoaded(newVisibilityChunks);
+        
+        // Check if player's center chunk changed
+        var hasChunkChanged = oldChunkKey != newChunkKey;
         
         // Update chunk membership
         if (!string.IsNullOrEmpty(oldChunkKey) && _chunks.TryGetValue(oldChunkKey, out var oldChunk))
@@ -123,7 +151,6 @@ public class TerrainService
         player.CurrentChunk = newChunkKey;
         
         // Calculate visibility changes
-        var newVisibilityChunks = CalculateVisibilityChunks(worldX, worldY);
         var oldVisibilityChunks = player.VisibilityChunks;
         
         var addedChunks = newVisibilityChunks.Except(oldVisibilityChunks);
@@ -151,6 +178,18 @@ public class TerrainService
         
         player.VisibilityChunks = newVisibilityChunks;
         
+        // Handle zone activation for newly visible chunks
+        if (addedChunks.Any())
+        {
+            _npcService?.HandleChunksEnteredVisibility(addedChunks);
+        }
+        
+        // Handle zone deactivation for chunks no longer visible
+        if (removedChunks.Any())
+        {
+            _npcService?.HandleChunksExitedVisibility(removedChunks);
+        }
+        
         // Store visibility changes for this tick
         if (newlyVisible.Any() || noLongerVisible.Any())
         {
@@ -173,21 +212,49 @@ public class TerrainService
         return (newlyVisible, noLongerVisible);
     }
     
-    private HashSet<string> CalculateVisibilityChunks(float worldX, float worldY)
+    private HashSet<string> CalculateVisibilityChunks(float worldX, float worldY, int? customRadius = null)
     {
         var (centerX, centerY) = WorldPositionToChunkCoord(worldX, worldY);
         var visibilityChunks = new HashSet<string>();
+        var radius = customRadius ?? _visibilityRadius;
         
-        // Build 3x3 chunk grid around player
-        for (int dx = -1; dx <= 1; dx++)
+        // Build chunk grid around player based on radius
+        for (int dx = -radius; dx <= radius; dx++)
         {
-            for (int dy = -1; dy <= 1; dy++)
+            for (int dy = -radius; dy <= radius; dy++)
             {
                 visibilityChunks.Add($"{centerX + dx},{centerY + dy}");
             }
         }
         
         return visibilityChunks;
+    }
+    
+    public void EnsureChunksLoaded(HashSet<string> chunkKeys)
+    {
+        foreach (var chunkKey in chunkKeys)
+        {
+            if (!_chunks.ContainsKey(chunkKey))
+            {
+                LoadChunkSync(chunkKey);
+            }
+            else if (_chunks.TryGetValue(chunkKey, out var chunk))
+            {
+                // Promote from warm to hot if needed
+                if (chunk.State == ChunkState.Warm)
+                {
+                    chunk.State = ChunkState.Hot;
+                    chunk.CooldownStartTime = null;
+                    _logger.LogDebug($"Chunk {chunkKey} promoted from warm to hot");
+                }
+                chunk.LastAccessed = DateTime.UtcNow;
+            }
+        }
+    }
+    
+    public bool TryGetChunk(string chunkKey, out TerrainChunk? chunk)
+    {
+        return _chunks.TryGetValue(chunkKey, out chunk);
     }
     
     
@@ -259,17 +326,7 @@ public class TerrainService
                 LastAccessed = DateTime.UtcNow
             };
             
-            if (chunkData.TryGetProperty("heights", out var heights))
-            {
-                var heightArray = heights.EnumerateArray().ToList();
-                chunk.Heights = new float[heightArray.Count];
-                
-                for (int i = 0; i < heightArray.Count; i++)
-                {
-                    chunk.Heights[i] = heightArray[i].GetSingle();
-                }
-            }
-            
+            // Server chunks don't have heights, only walkability
             if (chunkData.TryGetProperty("walkability", out var walkability))
             {
                 var walkArray = walkability.EnumerateArray().ToList();
@@ -286,6 +343,31 @@ public class TerrainService
                 if (walkArray.Count != _chunkSize * _chunkSize)
                 {
                     _logger.LogWarning($"Unexpected walkability array size: {walkArray.Count} (expected {_chunkSize * _chunkSize})");
+                }
+            }
+            
+            // Load zone definitions from this chunk
+            if (chunkData.TryGetProperty("zones", out var zones))
+            {
+                foreach (var zoneElement in zones.EnumerateArray())
+                {
+                    var zoneId = zoneElement.GetProperty("id").GetInt32();
+                    chunk.ZoneIds.Add(zoneId);
+                    
+                    // Notify NPCService about this zone definition
+                    _npcService?.LoadZoneFromChunk(zoneElement, chunkX, chunkY);
+                }
+            }
+            
+            // Load foreign zone references
+            if (chunkData.TryGetProperty("foreignZones", out var foreignZones))
+            {
+                foreach (var foreignZone in foreignZones.EnumerateArray())
+                {
+                    var rootX = foreignZone.GetProperty("rootChunkX").GetInt32();
+                    var rootY = foreignZone.GetProperty("rootChunkY").GetInt32();
+                    var zoneId = foreignZone.GetProperty("zoneId").GetInt32();
+                    chunk.ForeignZones.Add((rootX, rootY, zoneId));
                 }
             }
             
@@ -345,14 +427,44 @@ public class TerrainService
 
     private void CleanupUnusedChunks(object? state)
     {
-        var cutoffTime = DateTime.UtcNow.AddSeconds(-30);
+        var now = DateTime.UtcNow;
         var chunksToRemove = new List<string>();
+        
+        // Get all players for visibility checking - but we need GameWorldService reference
+        // For now, let's use a simpler approach and trust that NPCService handles zone cooldowns
+        // while TerrainService handles basic chunk cleanup based on player presence
         
         foreach (var kvp in _chunks)
         {
-            if (kvp.Value.PlayersOnChunk.Count == 0 && kvp.Value.LastAccessed < cutoffTime)
+            var chunk = kvp.Value;
+            
+            // Check if chunk should stay hot
+            if (chunk.ShouldStayHot)
             {
-                chunksToRemove.Add(kvp.Key);
+                if (chunk.State != ChunkState.Hot)
+                {
+                    chunk.State = ChunkState.Hot;
+                    chunk.CooldownStartTime = null;
+                }
+                continue;
+            }
+            
+            // Handle state transitions
+            if (chunk.State == ChunkState.Hot)
+            {
+                // Transition from hot to warm
+                chunk.State = ChunkState.Warm;
+                chunk.CooldownStartTime = now;
+                _logger.LogDebug($"Chunk {kvp.Key} transitioned from hot to warm");
+            }
+            else if (chunk.State == ChunkState.Warm && chunk.CooldownStartTime.HasValue)
+            {
+                var cooldownElapsed = (now - chunk.CooldownStartTime.Value).TotalSeconds;
+                if (cooldownElapsed >= _chunkCooldownSeconds)
+                {
+                    // Transition from warm to cold (unload)
+                    chunksToRemove.Add(kvp.Key);
+                }
             }
         }
         
@@ -360,7 +472,7 @@ public class TerrainService
         {
             if (_chunks.TryRemove(chunkKey, out _))
             {
-                _logger.LogDebug($"Unloaded unused chunk {chunkKey}");
+                _logger.LogDebug($"Chunk {chunkKey} transitioned to cold (unloaded)");
             }
         }
     }

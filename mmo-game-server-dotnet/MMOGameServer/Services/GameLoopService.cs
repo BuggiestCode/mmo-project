@@ -11,6 +11,7 @@ public class GameLoopService : BackgroundService
     private readonly GameWorldService _gameWorld;
     private readonly TerrainService _terrainService;
     private readonly DatabaseService _databaseService;
+    private readonly NPCService? _npcService;
     private readonly ILogger<GameLoopService> _logger;
     private readonly int _tickRate = 500; // 500ms tick rate matching JavaScript
     private readonly Timer _heartbeatTimer;
@@ -19,11 +20,13 @@ public class GameLoopService : BackgroundService
         GameWorldService gameWorld, 
         TerrainService terrainService,
         DatabaseService databaseService,
-        ILogger<GameLoopService> logger)
+        ILogger<GameLoopService> logger,
+        NPCService? npcService = null)
     {
         _gameWorld = gameWorld;
         _terrainService = terrainService;
         _databaseService = databaseService;
+        _npcService = npcService;
         _logger = logger;
         
         // Separate timer for heartbeat/cleanup (30 seconds)
@@ -66,11 +69,11 @@ public class GameLoopService : BackgroundService
     private async Task ProcessGameTickAsync()
     {
         var clients = _gameWorld.GetAuthenticatedClients().ToList();
-        if (!clients.Any()) return;
+        if (!clients.Any() && _npcService == null) return;
         
         var movementTasks = new List<Task<(ConnectedClient client, (float x, float y)? nextMove)>>();
         
-        // Start all movement calculations in parallel
+        // Start all player movement calculations in parallel
         foreach (var client in clients)
         {
             if (client.Player?.HasActivePath() == true)
@@ -79,10 +82,25 @@ public class GameLoopService : BackgroundService
             }
         }
         
+        // Process NPC movements if service is available
+        var npcMovementTasks = new List<Task>();
+        if (_npcService != null)
+        {
+            var activeNpcs = _npcService.GetActiveNPCs();
+            foreach (var npc in activeNpcs)
+            {
+                npcMovementTasks.Add(_npcService.ProcessNPCMovement(npc));
+            }
+        }
+        
         // Wait for ALL movement calculations to complete (deterministic)
         var movementResults = await Task.WhenAll(movementTasks);
+        if (npcMovementTasks.Any())
+        {
+            await Task.WhenAll(npcMovementTasks);
+        }
         
-        // Apply all movement results (this triggers visibility updates in TerrainService)
+        // Apply all player movement results (this triggers visibility updates in TerrainService)
         foreach (var (client, nextMove) in movementResults)
         {
             if (nextMove.HasValue)
@@ -106,6 +124,18 @@ public class GameLoopService : BackgroundService
             }
         }
         
+        // Build snapshot of all dirty NPCs
+        var allNpcSnapshots = new Dictionary<int, object>();
+        if (_npcService != null)
+        {
+            var dirtyNpcs = _npcService.GetDirtyNPCs();
+            foreach (var npc in dirtyNpcs)
+            {
+                allNpcSnapshots[npc.Id] = npc.GetSnapshot();
+                npc.IsDirty = false;
+            }
+        }
+        
         // Get visibility changes that occurred this tick
         var visibilityChanges = _terrainService.GetAndClearVisibilityChanges();
         
@@ -119,6 +149,13 @@ public class GameLoopService : BackgroundService
             var hasVisibilityChanges = visibilityChanges.TryGetValue(playerId, out var changes);
             var visiblePlayerIds = _terrainService.GetVisiblePlayers(client.Player);
             
+            // Get visible NPCs for this player
+            var visibleNpcIds = _npcService?.GetVisibleNPCs(client.Player) ?? new HashSet<int>();
+            var previousVisibleNpcIds = client.Player.VisibleNPCs ?? new HashSet<int>();
+            var newlyVisibleNpcs = visibleNpcIds.Except(previousVisibleNpcIds).ToHashSet();
+            var noLongerVisibleNpcs = previousVisibleNpcIds.Except(visibleNpcIds).ToHashSet();
+            client.Player.VisibleNPCs = visibleNpcIds;
+            
             // Separate self update from other players
             object? selfUpdate = null;
             if (allPlayerSnapshots.ContainsKey(playerId))
@@ -127,24 +164,38 @@ public class GameLoopService : BackgroundService
             }
             
             // Filter snapshots to only include OTHER visible players (exclude self)
-            var visibleSnapshots = allPlayerSnapshots
+            var visiblePlayerSnapshots = allPlayerSnapshots
                 .Where(kvp => kvp.Key != playerId && visiblePlayerIds.Contains(kvp.Key))
                 .Select(kvp => kvp.Value)
                 .ToList();
             
+            // Filter NPC snapshots to only include visible NPCs
+            var visibleNpcSnapshots = allNpcSnapshots
+                .Where(kvp => visibleNpcIds.Contains(kvp.Key))
+                .Select(kvp => kvp.Value)
+                .ToList();
+            
             // Only send update if there are changes
-            if (selfUpdate != null || visibleSnapshots.Any() || hasVisibilityChanges)
+            if (selfUpdate != null || visiblePlayerSnapshots.Any() || visibleNpcSnapshots.Any() || 
+                hasVisibilityChanges || newlyVisibleNpcs.Any() || noLongerVisibleNpcs.Any())
             {
                 var personalizedUpdate = new
                 {
                     type = "state",
                     selfStateUpdate = selfUpdate,
-                    players = visibleSnapshots.Any() ? visibleSnapshots : null,
+                    players = visiblePlayerSnapshots.Any() ? visiblePlayerSnapshots : null,
+                    npcs = visibleNpcSnapshots.Any() ? visibleNpcSnapshots : null,
                     clientsToLoad = hasVisibilityChanges && changes.newlyVisible.Any() 
                         ? _gameWorld.GetFullPlayerData(changes.newlyVisible) 
                         : null,
                     clientsToUnload = hasVisibilityChanges && changes.noLongerVisible.Any() 
                         ? changes.noLongerVisible.ToArray()
+                        : null,
+                    npcsToLoad = newlyVisibleNpcs.Any() 
+                        ? _npcService?.GetNPCSnapshots(newlyVisibleNpcs)
+                        : null,
+                    npcsToUnload = noLongerVisibleNpcs.Any()
+                        ? noLongerVisibleNpcs.ToArray()
                         : null
                 };
                 

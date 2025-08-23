@@ -258,5 +258,7 @@
         false,
         false,
         true
-    ]
+    ],
+    "zones": [],
+    "foreignZones": []
 }
