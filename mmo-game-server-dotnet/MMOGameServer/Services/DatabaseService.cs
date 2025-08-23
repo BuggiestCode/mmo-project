@@ -77,11 +77,11 @@ public class DatabaseService
             player.Facing = reader.GetInt32(3);
             player.CharacterCreatorCompleted = reader.GetBoolean(4);
             // Check for NULL values and use defaults if needed
-            player.HairColSwatchIndex = reader.IsDBNull(5) ? (short)0 : reader.GetInt16(5);
-            player.SkinColSwatchIndex = reader.IsDBNull(6) ? (short)0 : reader.GetInt16(6);
-            player.UnderColSwatchIndex = reader.IsDBNull(7) ? (short)0 : reader.GetInt16(7);
-            player.BootsColSwatchIndex = reader.IsDBNull(8) ? (short)0 : reader.GetInt16(8);
-            player.HairStyleIndex = reader.IsDBNull(9) ? (short)0 : reader.GetInt16(9);
+            player.HairColSwatchIndex = reader.IsDBNull(5) ? 0 : reader.GetInt32(5);
+            player.SkinColSwatchIndex = reader.IsDBNull(6) ? 0 : reader.GetInt32(6);
+            player.UnderColSwatchIndex = reader.IsDBNull(7) ? 0 : reader.GetInt32(7);
+            player.BootsColSwatchIndex = reader.IsDBNull(8) ? 0 : reader.GetInt32(8);
+            player.HairStyleIndex = reader.IsDBNull(9) ? 0 : reader.GetInt32(9);
             player.IsMale = reader.IsDBNull(10) ? true : reader.GetBoolean(10);
             Console.WriteLine($"Loaded existing player {userId} at ({player.X}, {player.Y}) with look: hair={player.HairColSwatchIndex}, skin={player.SkinColSwatchIndex}, under={player.UnderColSwatchIndex}, boots={player.BootsColSwatchIndex}, style={player.HairStyleIndex}, isMale={player.IsMale}");
             return player;
@@ -100,11 +100,11 @@ public class DatabaseService
         insertCmd.Parameters.AddWithValue("y", 0);
         insertCmd.Parameters.AddWithValue("facing", 0);
         insertCmd.Parameters.AddWithValue("characterCreatorComplete", false);
-        insertCmd.Parameters.AddWithValue("hairCol", (short)0);
-        insertCmd.Parameters.AddWithValue("skinCol", (short)0);
-        insertCmd.Parameters.AddWithValue("underCol", (short)0);
-        insertCmd.Parameters.AddWithValue("bootsCol", (short)0);
-        insertCmd.Parameters.AddWithValue("hairStyle", (short)0);
+        insertCmd.Parameters.AddWithValue("hairCol", 0);
+        insertCmd.Parameters.AddWithValue("skinCol", 0);
+        insertCmd.Parameters.AddWithValue("underCol", 0);
+        insertCmd.Parameters.AddWithValue("bootsCol", 0);
+        insertCmd.Parameters.AddWithValue("hairStyle", 0);
         insertCmd.Parameters.AddWithValue("isMale", true);
         
         await insertCmd.ExecuteNonQueryAsync();
@@ -257,34 +257,34 @@ public class DatabaseService
         try
         {
             // Parse JSON properties with defaults
-            short hairColSwatchIndex = 0;
+            int hairColSwatchIndex = 0;
             if (message.TryGetProperty("hairColSwatchIndex", out var hairColElement))
             {
-                hairColSwatchIndex = hairColElement.TryGetInt16(out var hairVal) ? hairVal : (short)0;
+                hairColSwatchIndex = hairColElement.TryGetInt32(out var hairVal) ? hairVal : 0;
             }
 
-            short skinColSwatchIndex = 0;
+            int skinColSwatchIndex = 0;
             if (message.TryGetProperty("skinColSwatchIndex", out var skinColElement))
             {
-                skinColSwatchIndex = skinColElement.TryGetInt16(out var skinVal) ? skinVal : (short)0;
+                skinColSwatchIndex = skinColElement.TryGetInt32(out var skinVal) ? skinVal : 0;
             }
 
-            short underColSwatchIndex = 0;
+            int underColSwatchIndex = 0;
             if (message.TryGetProperty("underColSwatchIndex", out var underColElement))
             {
-                underColSwatchIndex = underColElement.TryGetInt16(out var underVal) ? underVal : (short)0;
+                underColSwatchIndex = underColElement.TryGetInt32(out var underVal) ? underVal : 0;
             }
 
-            short bootsColSwatchIndex = 0;
+            int bootsColSwatchIndex = 0;
             if (message.TryGetProperty("bootsColSwatchIndex", out var bootsColElement))
             {
-                bootsColSwatchIndex = bootsColElement.TryGetInt16(out var bootsVal) ? bootsVal : (short)0;
+                bootsColSwatchIndex = bootsColElement.TryGetInt32(out var bootsVal) ? bootsVal : 0;
             }
 
-            short hairStyleIndex = 0;
+            int hairStyleIndex = 0;
             if (message.TryGetProperty("hairStyleIndex", out var hairStyleElement))
             {
-                hairStyleIndex = hairStyleElement.TryGetInt16(out var hairStyleVal) ? hairStyleVal : (short)0;
+                hairStyleIndex = hairStyleElement.TryGetInt32(out var hairStyleVal) ? hairStyleVal : 0;
             }
 
             bool isMale = true;

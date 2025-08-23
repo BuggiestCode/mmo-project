@@ -9,19 +9,19 @@ public class SaveCharacterLookAttributesMessage : IGameMessage
     public MessageType Type => MessageType.SaveCharacterLookAttributes;
     
     [JsonPropertyName("hairColSwatchIndex")]
-    public short? HairColSwatchIndex { get; set; }
+    public int? HairColSwatchIndex { get; set; }
     
     [JsonPropertyName("skinColSwatchIndex")]
-    public short? SkinColSwatchIndex { get; set; }
+    public int? SkinColSwatchIndex { get; set; }
     
     [JsonPropertyName("underColSwatchIndex")]
-    public short? UnderColSwatchIndex { get; set; }
+    public int? UnderColSwatchIndex { get; set; }
     
     [JsonPropertyName("bootsColSwatchIndex")]
-    public short? BootsColSwatchIndex { get; set; }
+    public int? BootsColSwatchIndex { get; set; }
     
     [JsonPropertyName("hairStyleIndex")]
-    public short? HairStyleIndex { get; set; }
+    public int? HairStyleIndex { get; set; }
     
     [JsonPropertyName("isMale")]
     public bool? IsMale { get; set; }

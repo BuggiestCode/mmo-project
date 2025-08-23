@@ -13,16 +13,17 @@ public class CharacterCreationHandler : IMessageHandler<CompleteCharacterCreatio
     public CharacterCreationHandler(DatabaseService database, ILogger<CharacterCreationHandler> logger)
     {
         _database = database;
+
         _logger = logger;
     }
-    
+
     public async Task HandleAsync(ConnectedClient client, CompleteCharacterCreationMessage message)
     {
         if (client.Player == null) return;
-        
+
         _logger.LogInformation($"Completing character creation for player {client.Player.UserId}");
         await _database.CompleteCharacterCreationAsync(client.Player.UserId);
-        
+
         // Update the player object
         client.Player.CharacterCreatorCompleted = true;
     }

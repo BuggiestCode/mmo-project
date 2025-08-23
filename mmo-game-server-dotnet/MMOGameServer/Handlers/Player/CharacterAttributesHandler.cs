@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MMOGameServer.Messages.Contracts;
 using MMOGameServer.Messages.Requests;
+using MMOGameServer.Messages.Responses;
 using MMOGameServer.Models;
 using MMOGameServer.Services;
 
@@ -9,11 +10,15 @@ namespace MMOGameServer.Handlers.Player;
 public class CharacterAttributesHandler : IMessageHandler<SaveCharacterLookAttributesMessage>
 {
     private readonly DatabaseService _database;
+    private readonly GameWorldService _gameWorld;
+    private readonly TerrainService _terrain;
     private readonly ILogger<CharacterAttributesHandler> _logger;
     
-    public CharacterAttributesHandler(DatabaseService database, ILogger<CharacterAttributesHandler> logger)
+    public CharacterAttributesHandler(DatabaseService database, GameWorldService gameWorld, TerrainService terrain, ILogger<CharacterAttributesHandler> logger)
     {
         _database = database;
+        _gameWorld = gameWorld;
+        _terrain = terrain;
         _logger = logger;
     }
     
@@ -44,7 +49,44 @@ public class CharacterAttributesHandler : IMessageHandler<SaveCharacterLookAttri
         if (message.IsMale.HasValue)
             client.Player.IsMale = message.IsMale.Value;
         
-        // Mark player as dirty to trigger state update
-        client.Player.IsDirty = true;
+        // Force visibility update to all players in range with updated appearance
+        await ForceVisibilityUpdateAsync(client);
+    }
+    
+    private async Task ForceVisibilityUpdateAsync(ConnectedClient client)
+    {
+        if (client.Player == null) return;
+        
+        // Get all players currently visible to this client
+        var visiblePlayerIds = _terrain.GetVisiblePlayers(client.Player);
+        
+        // Create custom look attributes update message
+        var lookUpdateMessage = new UpdatePlayerLookAttributesResponse
+        {
+            PlayerId = client.Player.UserId,
+            HairColSwatchIndex = client.Player.HairColSwatchIndex,
+            SkinColSwatchIndex = client.Player.SkinColSwatchIndex,
+            UnderColSwatchIndex = client.Player.UnderColSwatchIndex,
+            BootsColSwatchIndex = client.Player.BootsColSwatchIndex,
+            HairStyleIndex = client.Player.HairStyleIndex,
+            IsMale = client.Player.IsMale
+        };
+        
+        // Send to all visible players
+        var updateTasks = new List<Task>();
+        foreach (var playerId in visiblePlayerIds)
+        {
+            var visibleClient = _gameWorld.GetClientByUserId(playerId);
+            if (visibleClient != null && visibleClient.IsConnected())
+            {
+                updateTasks.Add(visibleClient.SendMessageAsync(lookUpdateMessage));
+            }
+        }
+        
+        if (updateTasks.Any())
+        {
+            await Task.WhenAll(updateTasks);
+            _logger.LogInformation($"Sent look attributes update to {updateTasks.Count} visible players for player {client.Player.UserId}");
+        }
     }
 }

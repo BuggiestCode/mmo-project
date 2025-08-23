@@ -12,11 +12,11 @@ public class Player
     public bool CharacterCreatorCompleted{ get; set; }
 
     // Player look attributes
-    public short HairColSwatchIndex { get; set; }
-    public short SkinColSwatchIndex { get; set; }
-    public short UnderColSwatchIndex { get; set; }
-    public short BootsColSwatchIndex { get; set; }
-    public short HairStyleIndex { get; set; }
+    public int HairColSwatchIndex { get; set; }
+    public int SkinColSwatchIndex { get; set; }
+    public int UnderColSwatchIndex { get; set; }
+    public int BootsColSwatchIndex { get; set; }
+    public int HairStyleIndex { get; set; }
     public bool IsMale { get; set; }
 
     // Terrain/Visibility properties (moved from TerrainService dictionaries)

@@ -213,16 +213,6 @@ public class TerrainService
         
         return visiblePlayers;
     }
-    
-    // Debug helper methods
-    public string GetPlayerVisibilityInfo(Player player)
-    {
-        if (string.IsNullOrEmpty(player.CurrentChunk))
-            return $"Player {player.UserId} not found";
-            
-        var visiblePlayers = GetVisiblePlayers(player);
-        return $"Player {player.UserId} at chunk {player.CurrentChunk}, can see chunks [{string.Join(", ", player.VisibilityChunks)}], can see players [{string.Join(", ", visiblePlayers)}]";
-    }
 
     public void RemovePlayer(Player player)
     {
