@@ -20,8 +20,8 @@ public class NPCZone
     public float NPCRespawnTimeSeconds { get; set; } = 60.0f;
     
     // Zone state
-    public bool IsActive { get; set; }
-    public DateTime? LastDeactivationTime { get; set; }
+    public bool IsHot { get; set; }  // true = Hot (visible), false = Warm (cooling down)
+    public DateTime? WarmStartTime { get; set; }  // When zone entered warm state (started cooldown)
     
     // Active NPCs in this zone
     public List<NPC> NPCs { get; set; } = new();

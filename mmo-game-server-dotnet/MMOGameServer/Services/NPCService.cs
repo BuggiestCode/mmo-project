@@ -13,6 +13,8 @@ public class NPCService
     private readonly ConcurrentDictionary<string, NPCZone> _zones = new();
     private readonly ConcurrentDictionary<int, NPC> _allNpcs = new();
     private readonly Random _random = new();
+    private readonly Timer _cooldownTimer;
+    private readonly int _zoneCooldownSeconds = 30;
     
     // Visibility tracking for NPCs (similar to players)
     private readonly ConcurrentDictionary<int, (HashSet<int> newlyVisible, HashSet<int> noLongerVisible)> _pendingNpcVisibilityChanges = new();
@@ -23,6 +25,9 @@ public class NPCService
         _pathfindingService = pathfindingService;
         _gameWorld = gameWorld;
         _logger = logger;
+        
+        // Check for warm zones that should transition to cold every 5 seconds
+        _cooldownTimer = new Timer(ProcessZoneCooldowns, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
     
     public void LoadZoneFromChunk(JsonElement zoneData, int chunkX, int chunkY)
@@ -51,11 +56,16 @@ public class NPCService
             var zone = new NPCZone(zoneId, minX, minY, maxX, maxY, npcType, maxNpcCount)
             {
                 RootChunkX = chunkX,
-                RootChunkY = chunkY
+                RootChunkY = chunkY,
+                IsHot = false  // Will be set to Hot when activated via SetZoneHot
             };
             
             _zones[uniqueZoneKey] = zone;
-            _logger.LogInformation($"Loaded NPC zone {uniqueZoneKey} (type: {npcType}, count: {maxNpcCount}) from chunk ({chunkX},{chunkY})");
+            
+            // Spawn NPCs immediately when zone is created
+            SpawnNPCsInZone(zone);
+            
+            _logger.LogInformation($"Loaded NPC zone {uniqueZoneKey} (type: {npcType}) from chunk ({chunkX},{chunkY}), spawned {zone.NPCs.Count} NPCs");
         }
         catch (Exception ex)
         {
@@ -105,50 +115,106 @@ public class NPCService
         }
     }
     
-    public void ActivateZone(string uniqueZoneKey)
+    public void SetZoneHot(string uniqueZoneKey)
     {
         if (!_zones.TryGetValue(uniqueZoneKey, out var zone))
         {
-            _logger.LogWarning($"Attempted to activate non-existent zone {uniqueZoneKey}");
-            return;
+            // Zone doesn't exist yet - try to load it from its root chunk
+            // Parse the zone key to get root chunk coordinates
+            var parts = uniqueZoneKey.Split('_');
+            if (parts.Length == 3 && int.TryParse(parts[0], out var rootX) && 
+                int.TryParse(parts[1], out var rootY) && int.TryParse(parts[2], out var zoneId))
+            {
+                var rootChunkKey = $"{rootX},{rootY}";
+                
+                // Ensure the root chunk is loaded (which will load the zone definition)
+                _terrainService.EnsureChunksLoaded(new HashSet<string> { rootChunkKey });
+                
+                // Try again now that root chunk should be loaded
+                if (!_zones.TryGetValue(uniqueZoneKey, out zone))
+                {
+                    _logger.LogWarning($"Zone {uniqueZoneKey} not found even after loading root chunk {rootChunkKey}");
+                    return;
+                }
+                
+                // New zone was just loaded, it should start as Hot
+                zone.IsHot = true;
+                zone.WarmStartTime = null;
+                
+                // Load all chunks in the zone
+                var zoneChunks = zone.GetOverlappingChunks();
+                var zoneChunkKeys = zoneChunks.Select(c => $"{c.chunkX},{c.chunkY}").ToHashSet();
+                _terrainService.EnsureChunksLoaded(zoneChunkKeys);
+                
+                _logger.LogInformation($"Zone {uniqueZoneKey} loaded from root chunk {rootChunkKey} and set to Hot");
+                return;
+            }
+            else
+            {
+                _logger.LogWarning($"Invalid zone key format: {uniqueZoneKey}");
+                return;
+            }
         }
         
-        if (zone.IsActive)
+        if (zone.IsHot)
         {
-            _logger.LogDebug($"Zone {uniqueZoneKey} is already active");
+            _logger.LogDebug($"Zone {uniqueZoneKey} is already hot");
             return;
         }
-        
-        zone.IsActive = true;
         
         // Load all chunks in the zone
         var chunks = zone.GetOverlappingChunks();
         var chunkKeys = chunks.Select(c => $"{c.chunkX},{c.chunkY}").ToHashSet();
         _terrainService.EnsureChunksLoaded(chunkKeys);
         
-        // Spawn NPCs if zone was cold (no recent deactivation)
-        var shouldRespawnAll = !zone.LastDeactivationTime.HasValue || 
-                               (DateTime.UtcNow - zone.LastDeactivationTime.Value).TotalSeconds > 30;
+        // Zone was warm, transition back to hot
+        zone.IsHot = true;
+        zone.WarmStartTime = null;
         
-        if (shouldRespawnAll)
-        {
-            SpawnNPCsInZone(zone);
-        }
-        
-        _logger.LogInformation($"Activated zone {uniqueZoneKey} with {zone.NPCs.Count} NPCs of type '{zone.NPCType}'");
+        _logger.LogInformation($"Zone {uniqueZoneKey} transitioned Warm→Hot (NPCs preserved)");
     }
     
-    public void DeactivateZone(string uniqueZoneKey)
+    public void SetZoneWarm(string uniqueZoneKey)
     {
         if (!_zones.TryGetValue(uniqueZoneKey, out var zone))
         {
             return;
         }
         
-        zone.IsActive = false;
-        zone.LastDeactivationTime = DateTime.UtcNow;
+        if (!zone.IsHot)
+        {
+            _logger.LogDebug($"Zone {uniqueZoneKey} already warm");
+            return;
+        }
         
-        _logger.LogInformation($"Deactivated zone {uniqueZoneKey}");
+        zone.IsHot = false;
+        zone.WarmStartTime = DateTime.UtcNow;
+        
+        _logger.LogInformation($"Zone {uniqueZoneKey} transitioned Hot→Warm, starting {_zoneCooldownSeconds}s cooldown");
+    }
+    
+    private void DestroyZone(string uniqueZoneKey)
+    {
+        if (!_zones.TryRemove(uniqueZoneKey, out var zone))
+        {
+            return;
+        }
+        
+        // Clean up all NPCs
+        foreach (var npc in zone.NPCs)
+        {
+            _allNpcs.TryRemove(npc.Id, out _);
+            
+            // Remove from chunk tracking
+            var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
+            var chunkKey = $"{chunkX},{chunkY}";
+            if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+            {
+                chunk.NPCsOnChunk.Remove(npc.Id);
+            }
+        }
+        
+        _logger.LogInformation($"Zone {uniqueZoneKey} destroyed (transitioned to Cold), cleaned up {zone.NPCs.Count} NPCs");
     }
     
     private void SpawnNPCsInZone(NPCZone zone)
@@ -215,11 +281,8 @@ public class NPCService
     
     public async Task ProcessNPCMovement(NPC npc)
     {
-        // Use cached zone reference - no lookup needed
-        if (!npc.Zone.IsActive)
-        {
-            return;
-        }
+        // NPCs process movement as long as zone exists (Hot or Warm)
+        // Cold zones are destroyed, so this won't be called for them
         
         // Get next move from current path
         var nextMove = npc.GetNextMove();
@@ -308,10 +371,10 @@ public class NPCService
             }
         }
         
-        // Activate all zones found in newly visible chunks
+        // Set zones to Hot when they enter player visibility
         foreach (var zoneKey in zonesToActivate)
         {
-            ActivateZone(zoneKey);
+            SetZoneHot(zoneKey);
         }
     }
     
@@ -347,7 +410,7 @@ public class NPCService
     
     private void CheckZoneForCooldown(string zoneKey)
     {
-        if (!_zones.TryGetValue(zoneKey, out var zone) || !zone.IsActive)
+        if (!_zones.TryGetValue(zoneKey, out var zone) || !zone.IsHot)
         {
             return;
         }
@@ -371,11 +434,10 @@ public class NPCService
             }
         }
         
-        // If no player can see any chunk of this zone, start cooldown
+        // If no player can see any chunk of this zone, transition to warm
         if (!anyPlayerCanSeeZone)
         {
-            DeactivateZone(zoneKey);
-            _logger.LogInformation($"Zone {zoneKey} entered cooldown - no players can see zone");
+            SetZoneWarm(zoneKey);
         }
     }
     
@@ -388,8 +450,9 @@ public class NPCService
     
     public List<NPC> GetActiveNPCs()
     {
+        // All zones in dictionary are active (Hot or Warm)
+        // Cold zones are destroyed/removed
         return _zones.Values
-            .Where(z => z.IsActive)
             .SelectMany(z => z.NPCs)
             .ToList();
     }
@@ -404,5 +467,37 @@ public class NPCService
     public List<NPCZone> GetAllZones()
     {
         return _zones.Values.ToList();
+    }
+    
+    private void ProcessZoneCooldowns(object? state)
+    {
+        var now = DateTime.UtcNow;
+        var zonesToDestroy = new List<string>();
+        
+        foreach (var kvp in _zones)
+        {
+            var zone = kvp.Value;
+            
+            // Check if warm zone should be destroyed (transition to cold)
+            if (!zone.IsHot && zone.WarmStartTime.HasValue)
+            {
+                var warmDuration = (now - zone.WarmStartTime.Value).TotalSeconds;
+                if (warmDuration >= _zoneCooldownSeconds)
+                {
+                    zonesToDestroy.Add(kvp.Key);
+                }
+            }
+        }
+        
+        // Destroy zones that completed cooldown
+        foreach (var zoneKey in zonesToDestroy)
+        {
+            DestroyZone(zoneKey);
+        }
+    }
+    
+    public void Dispose()
+    {
+        _cooldownTimer?.Dispose();
     }
 }
