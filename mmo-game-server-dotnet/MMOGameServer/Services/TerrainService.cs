@@ -434,8 +434,6 @@ public class TerrainService
         // Get all players for visibility checking - but we need GameWorldService reference
         // For now, let's use a simpler approach and trust that NPCService handles zone cooldowns
         // while TerrainService handles basic chunk cleanup based on player presence
-        _logger.LogInformation($"-----------ENTER CHUNK CLEANUP--------------");
-        
         foreach (var kvp in _chunks)
         {
             var chunk = kvp.Value;
@@ -476,7 +474,6 @@ public class TerrainService
                 _logger.LogInformation($"Chunk {chunkKey} transitioned to cold (unloaded)");
             }
         }
-        _logger.LogInformation($"-----------EXIT CHUNK CLEANUP--------------");
     }
 
     public void Dispose()

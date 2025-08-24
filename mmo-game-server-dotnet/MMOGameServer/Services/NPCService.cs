@@ -364,54 +364,69 @@ public class NPCService
         _logger.LogInformation($"Zone {uniqueZoneKey} destroyed (transitioned to Cold), cleaned up {zone.NPCs.Count} NPCs");
     }
     
+    /// <summary>
+    /// Spawns a single NPC in the specified zone at a random walkable position
+    /// </summary>
+    /// <param name="zone">The zone to spawn the NPC in</param>
+    /// <returns>The spawned NPC, or null if no walkable spawn point was found</returns>
+    private NPC? SpawnNPC(NPCZone zone)
+    {
+        float x = 0, y = 0;
+        bool foundWalkableSpawn = false;
+        
+        // Try up to configured max times to find a walkable spawn point
+        for (int attempt = 0; attempt < _maxSpawnRetries; attempt++)
+        {
+            (x, y) = zone.GetRandomSpawnPoint(_random);
+            if (_terrainService.ValidateMovement(x, y))
+            {
+                foundWalkableSpawn = true;
+                break;
+            }
+        }
+        
+        if (!foundWalkableSpawn)
+        {
+            _logger.LogWarning($"Failed to find walkable spawn point for NPC in zone {zone.Id} after {_maxSpawnRetries} attempts. Zone bounds: ({zone.MinX:F2},{zone.MinY:F2}) to ({zone.MaxX:F2},{zone.MaxY:F2})");
+            return null;
+        }
+        
+        var npc = new NPC(zone.Id, zone, zone.NPCType, x, y);
+        zone.NPCs.Add(npc);
+        _allNpcs[npc.Id] = npc;
+        
+        // Update chunk tracking
+        var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(x, y);
+        var chunkKey = $"{chunkX},{chunkY}";
+        if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+        {
+            chunk.NPCsOnChunk.Add(npc.Id);
+        }
+        
+        _logger.LogInformation($"Spawned NPC {npc.Id} of type '{zone.NPCType}' at ({x:F2},{y:F2})");
+        return npc;
+    }
+
     private void SpawnNPCsInZone(NPCZone zone)
     {
-        /*
         zone.NPCs.Clear();
         zone.RespawnTimers.Clear();
         
+        int spawnedCount = 0;
         for (int i = 0; i < zone.MaxNPCCount; i++)
         {
-            float x = 0, y = 0;
-            bool foundWalkableSpawn = false;
-            
-            // Try up to configured max times to find a walkable spawn point
-            for (int attempt = 0; attempt < _maxSpawnRetries; attempt++)
+            var npc = SpawnNPC(zone);
+            if (npc != null)
             {
-                (x, y) = zone.GetRandomSpawnPoint(_random);
-                if (_terrainService.ValidateMovement(x, y))
-                {
-                    foundWalkableSpawn = true;
-                    break;
-                }
+                spawnedCount++;
             }
-            
-            if (!foundWalkableSpawn)
-            {
-                _logger.LogWarning($"Failed to find walkable spawn point for NPC in zone {zone.Id} after {_maxSpawnRetries} attempts. Zone bounds: ({zone.MinX:F2},{zone.MinY:F2}) to ({zone.MaxX:F2},{zone.MaxY:F2})");
-                continue; // Skip spawning this NPC
-            }
-            
-            var npc = new NPC(zone.Id, zone, zone.NPCType, x, y);
-            zone.NPCs.Add(npc);
-            _allNpcs[npc.Id] = npc;
-            
-            // Update chunk tracking
-            var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(x, y);
-            var chunkKey = $"{chunkX},{chunkY}";
-            if (_terrainService.TryGetChunk(chunkKey, out var chunk))
-            {
-                chunk.NPCsOnChunk.Add(npc.Id);
-            }
-            
-            _logger.LogDebug($"Spawned NPC {npc.Id} of type '{zone.NPCType}' at ({x:F2},{y:F2})");
         }
-        */
+        
+        _logger.LogInformation($"Spawned {spawnedCount}/{zone.MaxNPCCount} NPCs in zone {zone.Id}");
     }
     
     public void UpdateNPCPosition(NPC npc, float newX, float newY)
     {
-        /*
         var (oldChunkX, oldChunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
         var (newChunkX, newChunkY) = _terrainService.WorldPositionToChunkCoord(newX, newY);
         
@@ -433,12 +448,10 @@ public class NPCService
         }
         
         npc.UpdatePosition(newX, newY);
-        */
     }
     
     public async Task ProcessNPCMovement(NPC npc)
     {
-        /*
         // NPCs process movement as long as zone exists (Hot or Warm)
         // Cold zones are destroyed, so this won't be called for them
 
@@ -458,12 +471,10 @@ public class NPCService
                 npc.NextRoamTime = now.AddSeconds(3 + _random.Next(5)); // 3-8 seconds between roams
             }
         }
-        */
     }
     
     private async Task GenerateRandomRoamPath(NPC npc, NPCZone zone)
     {
-        /*
         // Check if current position is walkable first
         if (!_terrainService.ValidateMovement(npc.X, npc.Y))
         {
@@ -498,12 +509,10 @@ public class NPCService
         
         // No valid roam target found - just stand still this tick and try again next time
         _logger.LogDebug($"NPC {npc.Id} couldn't find valid roam target after {_maxRoamRetries} attempts, standing still this tick");
-        */
     }
     
     private void DespawnAndRespawnNPC(NPC npc, NPCZone zone)
     {
-        /*
         // Remove NPC from tracking
         zone.NPCs.Remove(npc);
         _allNpcs.TryRemove(npc.Id, out _);
@@ -518,56 +527,39 @@ public class NPCService
         
         _logger.LogInformation($"Despawned NPC {npc.Id} from invalid position ({npc.X:F2},{npc.Y:F2})");
         
-        // Try to respawn in a valid position
-        float x = 0, y = 0;
-        bool foundWalkableSpawn = false;
-        
-        for (int attempt = 0; attempt < _maxSpawnRetries; attempt++)
+        // Try to respawn using the helper method
+        var newNpc = SpawnNPC(zone);
+        if (newNpc != null)
         {
-            (x, y) = zone.GetRandomSpawnPoint(_random);
-            if (_terrainService.ValidateMovement(x, y))
-            {
-                foundWalkableSpawn = true;
-                break;
-            }
-        }
-        
-        if (foundWalkableSpawn)
-        {
-            var newNpc = new NPC(zone.Id, zone, zone.NPCType, x, y);
-            zone.NPCs.Add(newNpc);
-            _allNpcs[newNpc.Id] = newNpc;
-            
-            // Update chunk tracking
-            var (newChunkX, newChunkY) = _terrainService.WorldPositionToChunkCoord(x, y);
-            var newChunkKey = $"{newChunkX},{newChunkY}";
-            if (_terrainService.TryGetChunk(newChunkKey, out var newChunk))
-            {
-                newChunk.NPCsOnChunk.Add(newNpc.Id);
-            }
-            
-            _logger.LogInformation($"Respawned NPC {newNpc.Id} at valid position ({x:F2},{y:F2})");
+            _logger.LogInformation($"Respawned NPC {newNpc.Id} at position ({newNpc.X:F2},{newNpc.Y:F2})");
         }
         else
         {
             _logger.LogError($"Failed to respawn NPC after despawning from invalid position - no walkable spawn found in zone {zone.Id}");
         }
-        */
     }
     
     public HashSet<int> GetVisibleNPCs(Player player)
     {
         var visibleNpcs = new HashSet<int>();
-        /*
         
         foreach (var chunkKey in player.VisibilityChunks)
         {
             if (_terrainService.TryGetChunk(chunkKey, out var chunk))
             {
+                if (chunk.NPCsOnChunk.Count > 0)
+                {
+                    _logger.LogDebug($"Player {player.UserId} can see {chunk.NPCsOnChunk.Count} NPCs on chunk {chunkKey}: [{string.Join(", ", chunk.NPCsOnChunk)}]");
+                }
                 visibleNpcs.UnionWith(chunk.NPCsOnChunk);
             }
         }
-        */
+        
+        if (visibleNpcs.Count > 0)
+        {
+            _logger.LogInformation($"Player {player.UserId} has {visibleNpcs.Count} visible NPCs: [{string.Join(", ", visibleNpcs)}]");
+        }
+        
         return visibleNpcs;
     }
     
@@ -705,14 +697,26 @@ public class NPCService
     
     public List<NPC> GetDirtyNPCs()
     {
-        return _allNpcs.Values
+        var dirtyNpcs = _allNpcs.Values
             .Where(npc => npc.IsDirty)
             .ToList();
+            
+        if (dirtyNpcs.Count > 0)
+        {
+            _logger.LogDebug($"Found {dirtyNpcs.Count} dirty NPCs: [{string.Join(", ", dirtyNpcs.Select(n => n.Id))}]");
+        }
+        
+        return dirtyNpcs;
     }
     
     public List<NPCZone> GetAllZones()
     {
         return _zones.Values.ToList();
+    }
+    
+    public IEnumerable<NPC> GetAllNPCs()
+    {
+        return _allNpcs.Values;
     }
     
     private void ProcessZoneCooldowns(object? state)
