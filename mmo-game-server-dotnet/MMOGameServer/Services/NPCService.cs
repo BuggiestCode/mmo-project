@@ -16,6 +16,10 @@ public class NPCService
     private readonly Timer _cooldownTimer;
     private readonly int _zoneCooldownSeconds = 30;
     
+    // NPC behavior configuration
+    private readonly int _maxSpawnRetries = 20;
+    private readonly int _maxRoamRetries = 10;
+    
     // Visibility tracking for NPCs (similar to players)
     private readonly ConcurrentDictionary<int, (HashSet<int> newlyVisible, HashSet<int> noLongerVisible)> _pendingNpcVisibilityChanges = new();
     
@@ -224,18 +228,24 @@ public class NPCService
         
         for (int i = 0; i < zone.MaxNPCCount; i++)
         {
-            var (x, y) = zone.GetRandomSpawnPoint(_random);
+            float x = 0, y = 0;
+            bool foundWalkableSpawn = false;
             
-            // Validate spawn point is walkable
-            if (!_terrainService.ValidateMovement(x, y))
+            // Try up to configured max times to find a walkable spawn point
+            for (int attempt = 0; attempt < _maxSpawnRetries; attempt++)
             {
-                // Try a few more times
-                for (int retry = 0; retry < 5; retry++)
+                (x, y) = zone.GetRandomSpawnPoint(_random);
+                if (_terrainService.ValidateMovement(x, y))
                 {
-                    (x, y) = zone.GetRandomSpawnPoint(_random);
-                    if (_terrainService.ValidateMovement(x, y))
-                        break;
+                    foundWalkableSpawn = true;
+                    break;
                 }
+            }
+            
+            if (!foundWalkableSpawn)
+            {
+                _logger.LogWarning($"Failed to find walkable spawn point for NPC in zone {zone.Id} after {_maxSpawnRetries} attempts. Zone bounds: ({zone.MinX:F2},{zone.MinY:F2}) to ({zone.MaxX:F2},{zone.MaxY:F2})");
+                continue; // Skip spawning this NPC
             }
             
             var npc = new NPC(zone.Id, zone, zone.NPCType, x, y);
@@ -304,16 +314,91 @@ public class NPCService
     
     private async Task GenerateRandomRoamPath(NPC npc, NPCZone zone)
     {
-        // Generate random target position within zone bounds
-        var targetX = zone.MinX + (float)(_random.NextDouble() * (zone.MaxX - zone.MinX));
-        var targetY = zone.MinY + (float)(_random.NextDouble() * (zone.MaxY - zone.MinY));
-        
-        // Pathfind to target
-        var path = await _pathfindingService.FindPathAsync(npc.X, npc.Y, targetX, targetY);
-        if (path != null && path.Count() > 0)
+        // Check if current position is walkable first
+        if (!_terrainService.ValidateMovement(npc.X, npc.Y))
         {
-            npc.SetPath(path);
-            _logger.LogDebug($"NPC {npc.Id} roaming to ({targetX:F2},{targetY:F2})");
+            _logger.LogError($"NPC {npc.Id} current position ({npc.X:F2},{npc.Y:F2}) is not walkable! Despawning and respawning...");
+            DespawnAndRespawnNPC(npc, zone);
+            return;
+        }
+        
+        // Try multiple times to find a walkable target position
+        for (int attempt = 0; attempt < _maxRoamRetries; attempt++)
+        {
+            // Generate random target position within zone bounds
+            var targetX = zone.MinX + (float)(_random.NextDouble() * (zone.MaxX - zone.MinX));
+            var targetY = zone.MinY + (float)(_random.NextDouble() * (zone.MaxY - zone.MinY));
+            
+            // Validate target position is walkable before attempting pathfinding
+            if (!_terrainService.ValidateMovement(targetX, targetY))
+            {
+                _logger.LogDebug($"NPC {npc.Id} roam target ({targetX:F2},{targetY:F2}) not walkable, retrying...");
+                continue;
+            }
+            
+            // Pathfind to validated target
+            var path = await _pathfindingService.FindPathAsync(npc.X, npc.Y, targetX, targetY);
+            if (path != null && path.Count() > 0)
+            {
+                npc.SetPath(path);
+                _logger.LogDebug($"NPC {npc.Id} roaming to ({targetX:F2},{targetY:F2})");
+                return;
+            }
+        }
+        
+        // No valid roam target found - just stand still this tick and try again next time
+        _logger.LogDebug($"NPC {npc.Id} couldn't find valid roam target after {_maxRoamRetries} attempts, standing still this tick");
+    }
+    
+    private void DespawnAndRespawnNPC(NPC npc, NPCZone zone)
+    {
+        // Remove NPC from tracking
+        zone.NPCs.Remove(npc);
+        _allNpcs.TryRemove(npc.Id, out _);
+        
+        // Remove from chunk tracking
+        var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
+        var chunkKey = $"{chunkX},{chunkY}";
+        if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+        {
+            chunk.NPCsOnChunk.Remove(npc.Id);
+        }
+        
+        _logger.LogInformation($"Despawned NPC {npc.Id} from invalid position ({npc.X:F2},{npc.Y:F2})");
+        
+        // Try to respawn in a valid position
+        float x = 0, y = 0;
+        bool foundWalkableSpawn = false;
+        
+        for (int attempt = 0; attempt < _maxSpawnRetries; attempt++)
+        {
+            (x, y) = zone.GetRandomSpawnPoint(_random);
+            if (_terrainService.ValidateMovement(x, y))
+            {
+                foundWalkableSpawn = true;
+                break;
+            }
+        }
+        
+        if (foundWalkableSpawn)
+        {
+            var newNpc = new NPC(zone.Id, zone, zone.NPCType, x, y);
+            zone.NPCs.Add(newNpc);
+            _allNpcs[newNpc.Id] = newNpc;
+            
+            // Update chunk tracking
+            var (newChunkX, newChunkY) = _terrainService.WorldPositionToChunkCoord(x, y);
+            var newChunkKey = $"{newChunkX},{newChunkY}";
+            if (_terrainService.TryGetChunk(newChunkKey, out var newChunk))
+            {
+                newChunk.NPCsOnChunk.Add(newNpc.Id);
+            }
+            
+            _logger.LogInformation($"Respawned NPC {newNpc.Id} at valid position ({x:F2},{y:F2})");
+        }
+        else
+        {
+            _logger.LogError($"Failed to respawn NPC after despawning from invalid position - no walkable spawn found in zone {zone.Id}");
         }
     }
     

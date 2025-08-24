@@ -310,7 +310,7 @@ public class TerrainService
         
         if (!File.Exists(filePath))
         {
-            _logger.LogWarning($"Chunk file not found: {filePath}");
+            //_logger.LogWarning($"Chunk file not found: {filePath}");
             return false;
         }
         
@@ -390,10 +390,10 @@ public class TerrainService
         if (!_chunks.TryGetValue(chunkKey, out var chunk))
         {
             // Try to load the chunk synchronously if not loaded
-            _logger.LogInformation($"Movement validation requires chunk {chunkKey} - loading synchronously");
+            //_logger.LogInformation($"Movement validation requires chunk {chunkKey} - loading synchronously");
             if (!LoadChunkSync(chunkKey))
             {
-                _logger.LogWarning($"Failed to load chunk {chunkKey} for validation at world({worldX}, {worldY})");
+                //_logger.LogWarning($"Failed to load chunk {chunkKey} for validation at world({worldX}, {worldY})");
                 return false;
             }
             _chunks.TryGetValue(chunkKey, out chunk);
@@ -475,6 +475,11 @@ public class TerrainService
                 _logger.LogDebug($"Chunk {chunkKey} transitioned to cold (unloaded)");
             }
         }
+    }
+
+    public IEnumerable<string> GetLoadedChunks()
+    {
+        return _chunks.Keys.ToList();
     }
 
     public void Dispose()

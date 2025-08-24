@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using MMOGameServer.Models;
+using MMOGameServer.Messages.Responses;
 
 namespace MMOGameServer.Services;
 
@@ -113,6 +114,13 @@ public class GameLoopService : BackgroundService
             }
         }
         
+        // Debug log: Show all currently active chunks if any are loaded
+        var loadedChunks = _terrainService.GetLoadedChunks();
+        if (loadedChunks.Any())
+        {
+            _logger.LogDebug("Game tick - Active chunks: [{Chunks}]", string.Join(", ", loadedChunks));
+        }
+        
         // Build snapshot of all dirty players
         var allPlayerSnapshots = new Dictionary<int, object>();
         foreach (var client in clients)
@@ -179,22 +187,21 @@ public class GameLoopService : BackgroundService
             if (selfUpdate != null || visiblePlayerSnapshots.Any() || visibleNpcSnapshots.Any() || 
                 hasVisibilityChanges || newlyVisibleNpcs.Any() || noLongerVisibleNpcs.Any())
             {
-                var personalizedUpdate = new
+                var personalizedUpdate = new StateMessage
                 {
-                    type = "state",
-                    selfStateUpdate = selfUpdate,
-                    players = visiblePlayerSnapshots.Any() ? visiblePlayerSnapshots : null,
-                    npcs = visibleNpcSnapshots.Any() ? visibleNpcSnapshots : null,
-                    clientsToLoad = hasVisibilityChanges && changes.newlyVisible.Any() 
+                    SelfStateUpdate = selfUpdate,
+                    Players = visiblePlayerSnapshots.Any() ? visiblePlayerSnapshots : null,
+                    Npcs = visibleNpcSnapshots.Any() ? visibleNpcSnapshots : null,
+                    ClientsToLoad = hasVisibilityChanges && changes.newlyVisible.Any() 
                         ? _gameWorld.GetFullPlayerData(changes.newlyVisible) 
                         : null,
-                    clientsToUnload = hasVisibilityChanges && changes.noLongerVisible.Any() 
+                    ClientsToUnload = hasVisibilityChanges && changes.noLongerVisible.Any() 
                         ? changes.noLongerVisible.ToArray()
                         : null,
-                    npcsToLoad = newlyVisibleNpcs.Any() 
+                    NpcsToLoad = newlyVisibleNpcs.Any() 
                         ? _npcService?.GetNPCSnapshots(newlyVisibleNpcs)
                         : null,
-                    npcsToUnload = noLongerVisibleNpcs.Any()
+                    NpcsToUnload = noLongerVisibleNpcs.Any()
                         ? noLongerVisibleNpcs.ToArray()
                         : null
                 };
