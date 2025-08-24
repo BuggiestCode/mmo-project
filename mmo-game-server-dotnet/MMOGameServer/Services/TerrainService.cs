@@ -4,39 +4,6 @@ using MMOGameServer.Models;
 
 namespace MMOGameServer.Services;
 
-public enum ChunkState
-{
-    Cold,  // Not loaded
-    Warm,  // Loaded but in cooldown period (no players, counting down to unload)
-    Hot    // Loaded and actively in use by players or zones
-}
-
-public class TerrainChunk
-{
-    public int ChunkX { get; set; }
-    public int ChunkY { get; set; }
-    public float[]? Heights { get; set; }  // Flat array matching Unity/JS
-    public bool[]? Walkability { get; set; }  // Flat array matching Unity/JS  
-    public DateTime LastAccessed { get; set; }
-    public ChunkState State { get; set; } = ChunkState.Hot;
-    public DateTime? CooldownStartTime { get; set; }
-    
-    // Player tracking (moved from TerrainService dictionary)
-    public HashSet<int> PlayersOnChunk { get; set; } = new();  // Players physically standing on this chunk
-    public HashSet<int> PlayersViewingChunk { get; set; } = new();  // Players who can see this chunk (within visibility radius)
-    
-    // Zone tracking
-    public List<int> ZoneIds { get; set; } = new();  // Zones with root on this chunk (static metadata)
-    public List<(int rootChunkX, int rootChunkY, int zoneId)> ForeignZones { get; set; } = new();  // Foreign zones overlapping this chunk (static metadata)
-    public HashSet<string> ActiveZoneKeys { get; set; } = new();  // Currently active zones keeping this chunk loaded
-    
-    // NPC tracking
-    public HashSet<int> NPCsOnChunk { get; set; } = new();
-    
-    // Chunk stays hot if players can see it OR active zones are keeping it loaded
-    public bool ShouldStayHot => PlayersViewingChunk.Count > 0 || ActiveZoneKeys.Count > 0;
-}
-
 public class TerrainService
 {
     private readonly ConcurrentDictionary<string, TerrainChunk> _chunks = new();
@@ -353,6 +320,12 @@ public class TerrainService
                 LastAccessed = DateTime.UtcNow
             };
             
+            // Set NPCService reference so chunk can check zone states
+            if (_npcService != null)
+            {
+                chunk.SetNPCService(_npcService);
+            }
+            
             // Server chunks don't have heights, only walkability
             if (chunkData.TryGetProperty("walkability", out var walkability))
             {
@@ -504,11 +477,6 @@ public class TerrainService
             }
         }
         _logger.LogInformation($"-----------EXIT CHUNK CLEANUP--------------");
-    }
-
-    public IEnumerable<string> GetLoadedChunks()
-    {
-        return _chunks.Keys.ToList();
     }
 
     public void Dispose()
