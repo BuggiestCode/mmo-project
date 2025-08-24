@@ -22,18 +22,19 @@ public class TerrainChunk
     public DateTime? CooldownStartTime { get; set; }
     
     // Player tracking (moved from TerrainService dictionary)
-    public HashSet<int> PlayersOnChunk { get; set; } = new();
+    public HashSet<int> PlayersOnChunk { get; set; } = new();  // Players physically standing on this chunk
+    public HashSet<int> PlayersViewingChunk { get; set; } = new();  // Players who can see this chunk (within visibility radius)
     
     // Zone tracking
-    public List<int> ZoneIds { get; set; } = new();  // Zones with root on this chunk
-    public List<(int rootChunkX, int rootChunkY, int zoneId)> ForeignZones { get; set; } = new();  // Foreign zones overlapping this chunk
+    public List<int> ZoneIds { get; set; } = new();  // Zones with root on this chunk (static metadata)
+    public List<(int rootChunkX, int rootChunkY, int zoneId)> ForeignZones { get; set; } = new();  // Foreign zones overlapping this chunk (static metadata)
+    public HashSet<string> ActiveZoneKeys { get; set; } = new();  // Currently active zones keeping this chunk loaded
     
     // NPC tracking
     public HashSet<int> NPCsOnChunk { get; set; } = new();
     
-    // Keep it simple: chunk with zones or players stays hot
-    // NPCService handles the sophisticated zone visibility logic separately
-    public bool ShouldStayHot => PlayersOnChunk.Count > 0 || ZoneIds.Count > 0 || ForeignZones.Count > 0;
+    // Chunk stays hot if players can see it OR active zones are keeping it loaded
+    public bool ShouldStayHot => PlayersViewingChunk.Count > 0 || ActiveZoneKeys.Count > 0;
 }
 
 public class TerrainService
@@ -131,6 +132,9 @@ public class TerrainService
         // Calculate new visibility chunks
         var newVisibilityChunks = CalculateVisibilityChunks(worldX, worldY);
         
+        // Debug: log what chunks we think should be visible
+        //_logger.LogInformation($"Player {player.UserId} at ({worldX:F1},{worldY:F1}) should see chunks: [{string.Join(", ", newVisibilityChunks)}]");
+        
         // Ensure all visibility chunks are loaded
         EnsureChunksLoaded(newVisibilityChunks);
         
@@ -164,6 +168,7 @@ public class TerrainService
         {
             if (_chunks.TryGetValue(chunkKey, out var chunk))
             {
+                chunk.PlayersViewingChunk.Add(player.UserId);  // Track that this player can see this chunk
                 newlyVisible.UnionWith(chunk.PlayersOnChunk.Where(p => p != player.UserId));
             }
         }
@@ -172,6 +177,7 @@ public class TerrainService
         {
             if (_chunks.TryGetValue(chunkKey, out var chunk))
             {
+                chunk.PlayersViewingChunk.Remove(player.UserId);  // Player can no longer see this chunk
                 noLongerVisible.UnionWith(chunk.PlayersOnChunk.Where(p => p != player.UserId));
             }
         }
@@ -289,6 +295,15 @@ public class TerrainService
             _logger.LogDebug($"Removed player {player.UserId} from chunk tracking");
         }
         
+        // Remove player from all visibility chunks
+        foreach (var chunkKey in player.VisibilityChunks)
+        {
+            if (_chunks.TryGetValue(chunkKey, out var viewChunk))
+            {
+                viewChunk.PlayersViewingChunk.Remove(player.UserId);
+            }
+        }
+        
         // Clear player's chunk and visibility data
         player.CurrentChunk = null;
         player.VisibilityChunks.Clear();
@@ -346,6 +361,9 @@ public class TerrainService
                 }
             }
             
+            // Store chunk in dictionary BEFORE processing zones (so ValidateMovement can find it)
+            _chunks[chunkKey] = chunk;
+            
             // Load zone definitions from this chunk
             if (chunkData.TryGetProperty("zones", out var zones))
             {
@@ -371,7 +389,6 @@ public class TerrainService
                 }
             }
             
-            _chunks[chunkKey] = chunk;
             _logger.LogInformation($"Loaded chunk {chunkKey} from {fileName}");
             return true;
         }
@@ -390,7 +407,6 @@ public class TerrainService
         if (!_chunks.TryGetValue(chunkKey, out var chunk))
         {
             // Try to load the chunk synchronously if not loaded
-            //_logger.LogInformation($"Movement validation requires chunk {chunkKey} - loading synchronously");
             if (!LoadChunkSync(chunkKey))
             {
                 //_logger.LogWarning($"Failed to load chunk {chunkKey} for validation at world({worldX}, {worldY})");
@@ -426,18 +442,18 @@ public class TerrainService
     }
 
     private void CleanupUnusedChunks(object? state)
-    {
+    {   
         var now = DateTime.UtcNow;
         var chunksToRemove = new List<string>();
         
         // Get all players for visibility checking - but we need GameWorldService reference
         // For now, let's use a simpler approach and trust that NPCService handles zone cooldowns
         // while TerrainService handles basic chunk cleanup based on player presence
+        _logger.LogInformation($"-----------ENTER CHUNK CLEANUP--------------");
         
         foreach (var kvp in _chunks)
         {
             var chunk = kvp.Value;
-            
             // Check if chunk should stay hot
             if (chunk.ShouldStayHot)
             {
@@ -455,7 +471,7 @@ public class TerrainService
                 // Transition from hot to warm
                 chunk.State = ChunkState.Warm;
                 chunk.CooldownStartTime = now;
-                _logger.LogDebug($"Chunk {kvp.Key} transitioned from hot to warm");
+                _logger.LogInformation($"Chunk {kvp.Key} transitioned from hot to warm");
             }
             else if (chunk.State == ChunkState.Warm && chunk.CooldownStartTime.HasValue)
             {
@@ -472,9 +488,10 @@ public class TerrainService
         {
             if (_chunks.TryRemove(chunkKey, out _))
             {
-                _logger.LogDebug($"Chunk {chunkKey} transitioned to cold (unloaded)");
+                _logger.LogInformation($"Chunk {chunkKey} transitioned to cold (unloaded)");
             }
         }
+        _logger.LogInformation($"-----------EXIT CHUNK CLEANUP--------------");
     }
 
     public IEnumerable<string> GetLoadedChunks()

@@ -89,10 +89,9 @@ public class NPCService
         return $"{rootChunkX}_{rootChunkY}_{zoneId}";
     }
     
-    private void RegisterZoneWithChunks(NPCZone zone)
+    private void RegisterZoneWithChunks(NPCZone zone, string uniqueZoneKey)
     {
         var overlappingChunks = zone.GetOverlappingChunks();
-        var rootChunkKey = $"{zone.RootChunkX},{zone.RootChunkY}";
         
         foreach (var (chunkX, chunkY) in overlappingChunks)
         {
@@ -103,18 +102,9 @@ public class NPCService
             
             if (_terrainService.TryGetChunk(chunkKey, out var chunk))
             {
-                if (chunkKey == rootChunkKey)
-                {
-                    // This is the root chunk
-                    chunk.ZoneIds.Add(zone.Id);
-                    _logger.LogDebug($"Registered zone {zone.Id} with root chunk {chunkKey}");
-                }
-                else
-                {
-                    // This is a foreign chunk
-                    chunk.ForeignZones.Add((zone.RootChunkX, zone.RootChunkY, zone.Id));
-                    _logger.LogDebug($"Registered zone {zone.Id} as foreign in chunk {chunkKey}");
-                }
+                // Add zone to active zones (keeps chunk loaded while zone is active)
+                chunk.ActiveZoneKeys.Add(uniqueZoneKey);
+                _logger.LogDebug($"Added zone {uniqueZoneKey} to chunk {chunkKey} ActiveZoneKeys");
             }
         }
     }
@@ -145,10 +135,8 @@ public class NPCService
                 zone.IsHot = true;
                 zone.WarmStartTime = null;
                 
-                // Load all chunks in the zone
-                var zoneChunks = zone.GetOverlappingChunks();
-                var zoneChunkKeys = zoneChunks.Select(c => $"{c.chunkX},{c.chunkY}").ToHashSet();
-                _terrainService.EnsureChunksLoaded(zoneChunkKeys);
+                // Register zone with all its chunks
+                RegisterZoneWithChunks(zone, uniqueZoneKey);
                 
                 _logger.LogInformation($"Zone {uniqueZoneKey} loaded from root chunk {rootChunkKey} and set to Hot");
                 return;
@@ -174,6 +162,9 @@ public class NPCService
         // Zone was warm, transition back to hot
         zone.IsHot = true;
         zone.WarmStartTime = null;
+        
+        // Register zone with all its chunks
+        RegisterZoneWithChunks(zone, uniqueZoneKey);
         
         _logger.LogInformation($"Zone {uniqueZoneKey} transitioned Warm→Hot (NPCs preserved)");
     }
@@ -215,6 +206,18 @@ public class NPCService
             if (_terrainService.TryGetChunk(chunkKey, out var chunk))
             {
                 chunk.NPCsOnChunk.Remove(npc.Id);
+            }
+        }
+        
+        // Remove zone from all overlapping chunks' ActiveZoneKeys
+        var overlappingChunks = zone.GetOverlappingChunks();
+        foreach (var (chunkX, chunkY) in overlappingChunks)
+        {
+            var chunkKey = $"{chunkX},{chunkY}";
+            if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+            {
+                chunk.ActiveZoneKeys.Remove(uniqueZoneKey);
+                _logger.LogDebug($"Removed zone {uniqueZoneKey} from chunk {chunkKey} ActiveZoneKeys");
             }
         }
         
@@ -440,10 +443,22 @@ public class NPCService
         {
             if (_terrainService.TryGetChunk(chunkKey, out var chunk))
             {
+                // Check if chunk has zone definitions but no active zones - wake up dormant zones
+                bool hasZoneDefinitions = chunk.ZoneIds.Count > 0 || chunk.ForeignZones.Count > 0;
+                bool hasActiveZones = chunk.ActiveZoneKeys.Count > 0;
+                
+                if (hasZoneDefinitions && !hasActiveZones)
+                {
+                    _logger.LogDebug($"Chunk {chunkKey} has zone definitions but no active zones - attempting to wake zones");
+                }
+                
                 // Check root zones in this newly visible chunk
                 foreach (var zoneId in chunk.ZoneIds)
                 {
                     var zoneKey = BuildZoneKey(chunk.ChunkX, chunk.ChunkY, zoneId);
+                    if (zonesToActivate.Contains(zoneKey))
+                        continue;
+
                     zonesToActivate.Add(zoneKey);
                 }
                 
@@ -451,6 +466,9 @@ public class NPCService
                 foreach (var (rootX, rootY, zoneId) in chunk.ForeignZones)
                 {
                     var zoneKey = BuildZoneKey(rootX, rootY, zoneId);
+                    if (zonesToActivate.Contains(zoneKey))
+                        continue;
+
                     zonesToActivate.Add(zoneKey);
                 }
             }

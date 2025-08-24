@@ -114,13 +114,6 @@ public class GameLoopService : BackgroundService
             }
         }
         
-        // Debug log: Show all currently active chunks if any are loaded
-        var loadedChunks = _terrainService.GetLoadedChunks();
-        if (loadedChunks.Any())
-        {
-            _logger.LogDebug("Game tick - Active chunks: [{Chunks}]", string.Join(", ", loadedChunks));
-        }
-        
         // Build snapshot of all dirty players
         var allPlayerSnapshots = new Dictionary<int, object>();
         foreach (var client in clients)
