@@ -11,17 +11,20 @@ public class LogoutHandler : IMessageHandler<LogoutMessage>, IMessageHandler<Qui
     private readonly GameWorldService _gameWorld;
     private readonly DatabaseService _database;
     private readonly TerrainService _terrain;
+    private readonly NPCService _npcService;
     private readonly ILogger<LogoutHandler> _logger;
     
     public LogoutHandler(
         GameWorldService gameWorld,
         DatabaseService database,
         TerrainService terrain,
+        NPCService npcService,
         ILogger<LogoutHandler> logger)
     {
         _gameWorld = gameWorld;
         _database = database;
         _terrain = terrain;
+        _npcService = npcService;
         _logger = logger;
     }
     
@@ -49,6 +52,9 @@ public class LogoutHandler : IMessageHandler<LogoutMessage>, IMessageHandler<Qui
             client.Player.Y,
             client.Player.Facing);
         
+        // Store visibility chunks before removing player (for zone cleanup)
+        var playerVisibilityChunks = new HashSet<string>(client.Player.VisibilityChunks);
+        
         // Remove from terrain tracking
         _terrain.RemovePlayer(client.Player);
         
@@ -59,6 +65,13 @@ public class LogoutHandler : IMessageHandler<LogoutMessage>, IMessageHandler<Qui
         
         // Remove client and session
         await _gameWorld.RemoveClientAsync(client.Id);
+        
+        // Now trigger zone cleanup AFTER client is removed from authenticated clients
+        if (playerVisibilityChunks.Any())
+        {
+            _npcService.HandleChunksExitedVisibility(playerVisibilityChunks);
+            _logger.LogInformation($"Player {client.Player.UserId} logout: triggered zone cleanup for {playerVisibilityChunks.Count} chunks");
+        }
         
         // Close WebSocket connection
         if (client.WebSocket?.State == WebSocketState.Open)

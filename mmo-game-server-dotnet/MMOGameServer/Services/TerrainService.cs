@@ -297,13 +297,23 @@ public class TerrainService
             _logger.LogDebug($"Removed player {player.UserId} from chunk tracking");
         }
         
+        // Store visibility chunks before clearing them (for zone cleanup)
+        var playerVisibilityChunks = new HashSet<string>(player.VisibilityChunks);
+        
         // Remove player from all visibility chunks
-        foreach (var chunkKey in player.VisibilityChunks)
+        foreach (var chunkKey in playerVisibilityChunks)
         {
             if (_chunks.TryGetValue(chunkKey, out var viewChunk))
             {
                 viewChunk.PlayersViewingChunk.Remove(player.UserId);
             }
+        }
+        
+        // Store chunks for delayed zone cleanup (will be processed after client removal)
+        if (playerVisibilityChunks.Any())
+        {
+            _logger.LogInformation($"Player {player.UserId} disconnect: stored {playerVisibilityChunks.Count} chunks for delayed zone cleanup");
+            // Note: Zone cleanup will be triggered separately after client is removed from GameWorld
         }
         
         // Clear player's chunk and visibility data

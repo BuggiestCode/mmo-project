@@ -526,19 +526,11 @@ public class NPCService
     {
         var zonesToActivate = new HashSet<string>();
         
+        // Collect all the unique NPC zones this chunk is a member of
         foreach (var chunkKey in newlyVisibleChunks)
         {
             if (_terrainService.TryGetChunk(chunkKey, out var chunk))
             {
-                // Check if chunk has zone definitions but no active zones - wake up dormant zones
-                bool hasZoneDefinitions = chunk.ZoneIds.Count > 0 || chunk.ForeignZones.Count > 0;
-                bool hasActiveZones = chunk.ActiveZoneKeys.Count > 0;
-                
-                if (hasZoneDefinitions && !hasActiveZones)
-                {
-                    _logger.LogDebug($"Chunk {chunkKey} has zone definitions but no active zones - attempting to wake zones");
-                }
-                
                 // Check root zones in this newly visible chunk
                 foreach (var zoneId in chunk.ZoneIds)
                 {
@@ -548,7 +540,7 @@ public class NPCService
 
                     zonesToActivate.Add(zoneKey);
                 }
-                
+
                 // Check foreign zones in this newly visible chunk
                 foreach (var (rootX, rootY, zoneId) in chunk.ForeignZones)
                 {
@@ -611,14 +603,17 @@ public class NPCService
         
         // Get all authenticated players and check their visibility
         var authenticatedClients = _gameWorld.GetAuthenticatedClients();
+        _logger.LogInformation($"CheckZoneForCooldown {zoneKey}: Zone chunks=[{string.Join(",", zoneChunkKeys)}], Auth clients={authenticatedClients.Count()}");
         foreach (var client in authenticatedClients)
         {
             if (client.Player?.VisibilityChunks != null)
             {
+                _logger.LogInformation($"  Player {client.Player.UserId} visibility chunks: [{string.Join(",", client.Player.VisibilityChunks)}]");
                 // If any zone chunk overlaps with player visibility, zone stays active
                 if (zoneChunkKeys.Overlaps(client.Player.VisibilityChunks))
                 {
                     anyPlayerCanSeeZone = true;
+                    _logger.LogInformation($"  Zone {zoneKey} stays active - Player {client.Player.UserId} can see it");
                     break;
                 }
             }
