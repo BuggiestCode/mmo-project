@@ -89,6 +89,84 @@ public class NPCService
         return $"{rootChunkX}_{rootChunkY}_{zoneId}";
     }
     
+    private bool TryRecreateZoneFromExistingChunk(string uniqueZoneKey, int rootChunkX, int rootChunkY, int zoneId)
+    {
+        try
+        {
+            var rootChunkKey = $"{rootChunkX},{rootChunkY}";
+            
+            // Check if the root chunk is already loaded
+            if (!_terrainService.TryGetChunk(rootChunkKey, out var rootChunk))
+            {
+                _logger.LogDebug($"Root chunk {rootChunkKey} not loaded, cannot recreate zone {uniqueZoneKey}");
+                return false;
+            }
+            
+            // Check if this chunk has the zone definition for the requested zone ID
+            if (!rootChunk.ZoneIds.Contains(zoneId))
+            {
+                _logger.LogDebug($"Zone ID {zoneId} not found in root chunk {rootChunkKey}");
+                return false;
+            }
+            
+            // We need to re-read the chunk file to get the zone definition JSON
+            // This is similar to LoadZoneFromChunk but works with existing chunks
+            var fileName = $"chunk_{rootChunkX}_{rootChunkY}.json";
+            var filePath = Path.Combine(_terrainService.GetTerrainPath(), fileName);
+            
+            if (!File.Exists(filePath))
+            {
+                _logger.LogWarning($"Cannot recreate zone - chunk file not found: {filePath}");
+                return false;
+            }
+            
+            var json = File.ReadAllText(filePath);
+            var chunkData = JsonSerializer.Deserialize<JsonElement>(json);
+            
+            // Find the specific zone definition
+            if (chunkData.TryGetProperty("zones", out var zones))
+            {
+                foreach (var zoneElement in zones.EnumerateArray())
+                {
+                    var currentZoneId = zoneElement.GetProperty("id").GetInt32();
+                    if (currentZoneId == zoneId)
+                    {
+                        // Found our zone definition - recreate it
+                        var minX = zoneElement.GetProperty("minX").GetSingle();
+                        var minY = zoneElement.GetProperty("minY").GetSingle();
+                        var maxX = zoneElement.GetProperty("maxX").GetSingle();
+                        var maxY = zoneElement.GetProperty("maxY").GetSingle();
+                        var npcType = zoneElement.GetProperty("npcType").GetString() ?? "default";
+                        var maxNpcCount = zoneElement.GetProperty("maxCount").GetInt32();
+                        
+                        var zone = new NPCZone(zoneId, minX, minY, maxX, maxY, npcType, maxNpcCount)
+                        {
+                            RootChunkX = rootChunkX,
+                            RootChunkY = rootChunkY,
+                            IsHot = false  // Will be set to Hot by caller
+                        };
+                        
+                        _zones[uniqueZoneKey] = zone;
+                        
+                        // Spawn NPCs for the recreated zone
+                        SpawnNPCsInZone(zone);
+                        
+                        _logger.LogInformation($"Recreated NPC zone {uniqueZoneKey} (type: {npcType}) from existing chunk ({rootChunkX},{rootChunkY}), spawned {zone.NPCs.Count} NPCs");
+                        return true;
+                    }
+                }
+            }
+            
+            _logger.LogWarning($"Zone definition for ID {zoneId} not found in chunk file {fileName}");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Failed to recreate zone {uniqueZoneKey} from existing chunk ({rootChunkX},{rootChunkY})");
+            return false;
+        }
+    }
+    
     private void RegisterZoneWithChunks(NPCZone zone, string uniqueZoneKey)
     {
         var overlappingChunks = zone.GetOverlappingChunks();
@@ -127,8 +205,17 @@ public class NPCService
                 // Try again now that root chunk should be loaded
                 if (!_zones.TryGetValue(uniqueZoneKey, out zone))
                 {
-                    _logger.LogWarning($"Zone {uniqueZoneKey} not found even after loading root chunk {rootChunkKey}");
-                    return;
+                    // Zone was destroyed but chunk still has definition - try to recreate it
+                    if (TryRecreateZoneFromExistingChunk(uniqueZoneKey, rootX, rootY, zoneId))
+                    {
+                        zone = _zones[uniqueZoneKey];
+                        _logger.LogInformation($"Recreated zone {uniqueZoneKey} from existing chunk data");
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"Zone {uniqueZoneKey} not found even after loading root chunk {rootChunkKey}");
+                        return;
+                    }
                 }
                 
                 // New zone was just loaded, it should start as Hot

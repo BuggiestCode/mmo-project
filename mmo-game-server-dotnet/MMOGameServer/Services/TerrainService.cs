@@ -95,6 +95,8 @@ public class TerrainService
     }
     
     public int GetVisibilityRadius() => _visibilityRadius;
+    
+    public string GetTerrainPath() => _terrainPath;
 
     public (int chunkX, int chunkY) WorldPositionToChunkCoord(float worldX, float worldY)
     {
