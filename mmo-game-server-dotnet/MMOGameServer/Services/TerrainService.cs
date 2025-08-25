@@ -276,12 +276,7 @@ public class TerrainService
             }
         }
         
-        // Store chunks for delayed zone cleanup (will be processed after client removal)
-        if (playerVisibilityChunks.Any())
-        {
-            _logger.LogInformation($"Player {player.UserId} disconnect: stored {playerVisibilityChunks.Count} chunks for delayed zone cleanup");
-            // Note: Zone cleanup will be triggered separately after client is removed from GameWorld
-        }
+        // Note: Zone cleanup will be triggered separately after client is removed from GameWorld
         
         // Clear player's chunk and visibility data
         player.CurrentChunk = null;

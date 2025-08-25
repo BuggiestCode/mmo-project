@@ -346,6 +346,8 @@ public class GameLoopService : BackgroundService
 
     private async Task OnDisconnectAsync(ConnectedClient client)
     {
+        HashSet<string> playerVisibilityChunks = new HashSet<string>();
+
         if (client.Player != null)
         {
             // Send the quit request to ALL players (including quitter)
@@ -358,8 +360,16 @@ public class GameLoopService : BackgroundService
                 client.Player.Y,
                 client.Player.Facing);
 
+            playerVisibilityChunks.UnionWith(client.Player.VisibilityChunks);
+
             // Remove from terrain tracking
             _terrainService.RemovePlayer(client.Player);
+        }
+
+        // Now trigger zone cleanup AFTER client is removed from authenticated clients
+        if (playerVisibilityChunks.Any())
+        {
+            _npcService?.HandleChunksExitedVisibility(playerVisibilityChunks);
         }
         
         // Remove client and close connection

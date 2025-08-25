@@ -12,6 +12,7 @@ public class WebSocketMiddleware
     private readonly DatabaseService _database;
     private readonly TerrainService _terrain;
     private readonly MessageProcessor _messageProcessor;
+    private readonly NPCService _npcService;
     private readonly ILogger<WebSocketMiddleware> _logger;
     
     public WebSocketMiddleware(
@@ -19,6 +20,7 @@ public class WebSocketMiddleware
         GameWorldService gameWorld, 
         DatabaseService database,
         TerrainService terrain,
+        NPCService npcService,
         MessageProcessor messageProcessor,
         ILogger<WebSocketMiddleware> logger)
     {
@@ -26,6 +28,7 @@ public class WebSocketMiddleware
         _gameWorld = gameWorld;
         _database = database;
         _terrain = terrain;
+        _npcService = npcService;
         _messageProcessor = messageProcessor;
         _logger = logger;
     }
@@ -133,7 +136,9 @@ public class WebSocketMiddleware
                 client.Player.X,
                 client.Player.Y,
                 client.Player.Facing);
-            
+                
+            var playerVisibilityChunks = new HashSet<string>(client.Player.VisibilityChunks);
+        
             // Remove from terrain tracking
             _terrain.RemovePlayer(client.Player);
             
@@ -143,6 +148,14 @@ public class WebSocketMiddleware
                 client.Id);
             
             await _gameWorld.RemoveClientAsync(client.Id);
+
+            // Now trigger zone cleanup AFTER client is removed from authenticated clients
+            if (playerVisibilityChunks.Any())
+            {
+                _npcService.HandleChunksExitedVisibility(playerVisibilityChunks);
+                _logger.LogInformation($"Player {client.Player.UserId} logout: triggered zone cleanup for {playerVisibilityChunks.Count} chunks");
+            }
+            
             return;
         }
         
