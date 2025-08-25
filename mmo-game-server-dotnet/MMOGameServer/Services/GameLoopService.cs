@@ -16,6 +16,7 @@ public class GameLoopService : BackgroundService
     private readonly ILogger<GameLoopService> _logger;
     private readonly int _tickRate = 500; // 500ms tick rate matching JavaScript
     private readonly Timer _heartbeatTimer;
+    private readonly Timer? _npcAuditTimer;
     
     public GameLoopService(
         GameWorldService gameWorld, 
@@ -32,6 +33,12 @@ public class GameLoopService : BackgroundService
         
         // Separate timer for heartbeat/cleanup (30 seconds)
         _heartbeatTimer = new Timer(HeartbeatClients, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        
+        // NPC audit timer (10 seconds) - only if NPCService is available
+        if (_npcService != null)
+        {
+            _npcAuditTimer = new Timer(AuditNPCs, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -65,6 +72,7 @@ public class GameLoopService : BackgroundService
         }
         
         _heartbeatTimer?.Dispose();
+        _npcAuditTimer?.Dispose();
     }
 
     private async Task ProcessGameTickAsync()
@@ -398,6 +406,18 @@ public class GameLoopService : BackgroundService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error validating sessions");
+        }
+    }
+    
+    private void AuditNPCs(object? state)
+    {
+        try
+        {
+            _npcService?.AuditOrphanedNPCs();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in NPC audit");
         }
     }
 }

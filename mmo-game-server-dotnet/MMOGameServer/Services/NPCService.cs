@@ -46,7 +46,7 @@ public class NPCService
             // Check if zone already loaded from another chunk
             if (_zones.ContainsKey(uniqueZoneKey))
             {
-                _logger.LogDebug($"Zone {uniqueZoneKey} already loaded, skipping");
+                _logger.LogWarning($"Zone {uniqueZoneKey} already loaded with {_zones[uniqueZoneKey].NPCs.Count} NPCs, skipping duplicate load from chunk ({chunkX},{chunkY})");
                 return;
             }
             
@@ -377,6 +377,13 @@ public class NPCService
     /// <returns>The spawned NPC, or null if no walkable spawn point was found</returns>
     private NPC? SpawnNPC(NPCZone zone)
     {
+        // Safety check: Don't spawn if we've already hit the max
+        if (zone.NPCs.Count >= zone.MaxNPCCount)
+        {
+            _logger.LogWarning($"Zone {zone.Id} already has {zone.NPCs.Count}/{zone.MaxNPCCount} NPCs, skipping spawn");
+            return null;
+        }
+        
         float x = 0, y = 0;
         bool foundWalkableSpawn = false;
         
@@ -415,6 +422,27 @@ public class NPCService
 
     private void SpawnNPCsInZone(NPCZone zone)
     {
+        var zoneKey = BuildZoneKey(zone.RootChunkX, zone.RootChunkY, zone.Id);
+        
+        // Clean up any existing NPCs in this zone first
+        if (zone.NPCs.Count > 0)
+        {
+            _logger.LogWarning($"Zone {zoneKey} already has {zone.NPCs.Count} NPCs before spawning, cleaning them up first");
+        }
+        
+        foreach (var existingNpc in zone.NPCs.ToList())
+        {
+            _allNpcs.TryRemove(existingNpc.Id, out _);
+            
+            // Remove from chunk tracking
+            var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(existingNpc.X, existingNpc.Y);
+            var chunkKey = $"{chunkX},{chunkY}";
+            if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+            {
+                chunk.NPCsOnChunk.Remove(existingNpc.Id);
+            }
+        }
+        
         zone.NPCs.Clear();
         zone.RespawnTimers.Clear();
         
@@ -762,6 +790,34 @@ public class NPCService
         else
         {
             _logger.LogDebug("[NPC AUDIT] No orphaned NPCs found");
+        }
+        
+        // Also audit zones that have too many NPCs
+        foreach (var kvp in _zones)
+        {
+            var zone = kvp.Value;
+            if (zone.NPCs.Count > zone.MaxNPCCount)
+            {
+                _logger.LogError($"[NPC AUDIT] Zone {kvp.Key} has {zone.NPCs.Count} NPCs but max is {zone.MaxNPCCount}. Removing excess NPCs.");
+                
+                // Remove excess NPCs
+                var excessNpcs = zone.NPCs.Skip(zone.MaxNPCCount).ToList();
+                foreach (var npc in excessNpcs)
+                {
+                    zone.NPCs.Remove(npc);
+                    _allNpcs.TryRemove(npc.Id, out _);
+                    
+                    // Remove from chunk tracking
+                    var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
+                    var chunkKey = $"{chunkX},{chunkY}";
+                    if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+                    {
+                        chunk.NPCsOnChunk.Remove(npc.Id);
+                    }
+                }
+                
+                _logger.LogInformation($"[NPC AUDIT] Removed {excessNpcs.Count} excess NPCs from zone {kvp.Key}");
+            }
         }
     }
     

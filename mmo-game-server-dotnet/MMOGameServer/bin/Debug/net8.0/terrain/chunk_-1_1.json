@@ -263,7 +263,7 @@
     "foreignZones": [
         {
             "rootChunkX": -2,
-            "rootChunkY": 1,
+            "rootChunkY": 0,
             "zoneId": 2
         }
     ]
