@@ -124,11 +124,25 @@ public class GameLoopService : BackgroundService
                 client.Player.IsDirty = false;
             }
         }
-        
+
         // Build snapshot of all dirty NPCs
         var allNpcSnapshots = new Dictionary<int, object>();
         if (_npcService != null)
         {
+            /*
+            // DEBUG: Print all active NPCs each tick
+            var allNpcs = _npcService.GetAllNPCs().ToList();
+            if (allNpcs.Count > 0)
+            {
+                _logger.LogInformation($"[NPC DEBUG] Total active NPCs: {allNpcs.Count}");
+                foreach (var npc in allNpcs)
+                {
+                    var zoneExists = _npcService.GetZone($"{npc.Zone.RootChunkX}_{npc.Zone.RootChunkY}_{npc.ZoneId}") != null;
+                    _logger.LogInformation($"[NPC DEBUG] NPC {npc.Id}: Type={npc.Type}, Pos=({npc.X:F1},{npc.Y:F1}), Zone={npc.ZoneId}, ZoneExists={zoneExists}, IsDirty={npc.IsDirty}");
+                }
+            }
+            */
+            
             var dirtyNpcs = _npcService.GetDirtyNPCs();
             foreach (var npc in dirtyNpcs)
             {

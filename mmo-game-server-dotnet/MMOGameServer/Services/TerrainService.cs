@@ -469,10 +469,33 @@ public class TerrainService
         
         foreach (var chunkKey in chunksToRemove)
         {
-            if (_chunks.TryRemove(chunkKey, out _))
+            if (_chunks.TryRemove(chunkKey, out var removedChunk))
             {
                 _logger.LogInformation($"Chunk {chunkKey} transitioned to cold (unloaded)");
+                
+                // Notify NPCService to destroy zones associated with this chunk
+                if (_npcService != null)
+                {
+                    // Parse chunk key to get coordinates
+                    var parts = chunkKey.Split(',');
+                    if (parts.Length == 2 && int.TryParse(parts[0], out var chunkX) && int.TryParse(parts[1], out var chunkY))
+                    {
+                        // Destroy zones defined on this chunk
+                        foreach (var zoneId in removedChunk.ZoneIds)
+                        {
+                            var uniqueZoneKey = NPCService.BuildZoneKey(chunkX, chunkY, zoneId);
+                            _logger.LogInformation($"[NPC CLEANUP] Destroying zone {uniqueZoneKey} because root chunk {chunkKey} went cold");
+                            _npcService.DestroyZone(uniqueZoneKey);
+                        }
+                    }
+                }
             }
+        }
+        
+        // Audit and clean up orphaned NPCs
+        if (_npcService != null)
+        {
+            _npcService.AuditOrphanedNPCs();
         }
     }
 

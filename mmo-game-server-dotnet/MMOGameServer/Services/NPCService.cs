@@ -77,6 +77,12 @@ public class NPCService
         }
     }
     
+    // Get zone by compound key (useful for admin commands)
+    public NPCZone? GetZone(string uniqueZoneKey)
+    {
+        return _zones.TryGetValue(uniqueZoneKey, out var zone) ? zone : null;
+    }
+
     // Helper to build unique zone key
     public static string BuildZoneKey(int rootChunkX, int rootChunkY, int zoneId)
     {
@@ -328,7 +334,7 @@ public class NPCService
         _logger.LogInformation($"Zone {uniqueZoneKey} transitioned Warm→Cold, cleaned up NPCs but keeping zone reference");
     }
     
-    private void DestroyZone(string uniqueZoneKey)
+    public void DestroyZone(string uniqueZoneKey)
     {
         if (!_zones.TryRemove(uniqueZoneKey, out var zone))
         {
@@ -717,6 +723,46 @@ public class NPCService
     public IEnumerable<NPC> GetAllNPCs()
     {
         return _allNpcs.Values;
+    }
+    
+    public void AuditOrphanedNPCs()
+    {
+        var orphanedNpcs = new List<NPC>();
+        
+        foreach (var npc in _allNpcs.Values)
+        {
+            var zoneKey = BuildZoneKey(npc.Zone.RootChunkX, npc.Zone.RootChunkY, npc.ZoneId);
+            if (!_zones.ContainsKey(zoneKey))
+            {
+                orphanedNpcs.Add(npc);
+            }
+        }
+        
+        if (orphanedNpcs.Count > 0)
+        {
+            _logger.LogError($"[NPC AUDIT] Found {orphanedNpcs.Count} orphaned NPCs without valid zones:");
+            foreach (var npc in orphanedNpcs)
+            {
+                var zoneKey = BuildZoneKey(npc.Zone.RootChunkX, npc.Zone.RootChunkY, npc.ZoneId);
+                _logger.LogError($"[NPC AUDIT] Orphaned NPC {npc.Id}: Zone={zoneKey}, Pos=({npc.X:F1},{npc.Y:F1})");
+                
+                // Clean up orphaned NPC
+                _allNpcs.TryRemove(npc.Id, out _);
+                
+                // Remove from chunk tracking
+                var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
+                var chunkKey = $"{chunkX},{chunkY}";
+                if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+                {
+                    chunk.NPCsOnChunk.Remove(npc.Id);
+                }
+            }
+            _logger.LogInformation($"[NPC AUDIT] Cleaned up {orphanedNpcs.Count} orphaned NPCs");
+        }
+        else
+        {
+            _logger.LogDebug("[NPC AUDIT] No orphaned NPCs found");
+        }
     }
     
     private void ProcessZoneCooldowns(object? state)
