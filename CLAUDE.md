@@ -1,33 +1,21 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
 
 This is a multiplayer online game (MMO) with a distributed architecture consisting of:
-- **Unity Frontend**: WebGL-based game client with real-time terrain rendering and multiplayer support
-- **Auth/Backend Server**: Node.js/Express server handling authentication and serving the Unity build
-- **Game World Servers**: WebSocket-based game servers managing player state and world simulation
-- **PostgreSQL Database**: Dual database setup for authentication/sessions and game state persistence
 
-## Architecture
-
-### System Components
-
-**Frontend (Unity WebGL)**
+**Frontend (Unity WebGL)** WebGL-based game client with real-time terrain rendering and multiplayer support
 - Located in `mmo-frontend/MMO_FrontEnd/`
 - WebSocket connection to game servers at `wss://mmo-world#-production.fly.dev` or `wss://mmo-world#-staging.fly.dev` where # is the world number
 - Real-time terrain chunk loading from JSON data
 - Click-to-move player movement with pathfinding
 - Overhead chat system and UI panels
 
-**Auth/Backend Server** (`mmo-backend/`)
+**Auth/Backend Server** (`mmo-backend/`) Node.js/Express server handling authentication and serving the Unity build
 - Express server on port 8080
 - JWT authentication with bcrypt password hashing
 - Serves Unity WebGL build from `/public`
 - PostgreSQL connection for user management
 
-**Game Server** (`mmo-game-server-dotnet/MMOGameServer/`)
+**Game Server** (`mmo-game-server-dotnet/MMOGameServer/`) WebSocket-based game servers managing player state and world simulation
 - ASP.NET Core WebSocket server built with .NET 8
 - Dependency injection with singleton services for shared state
 - Real-time player movement with A* pathfinding
@@ -35,7 +23,7 @@ This is a multiplayer online game (MMO) with a distributed architecture consisti
 - Concurrent chunk-based terrain management system
 - JWT authentication middleware with session management
 
-**Database Structure**
+**Database Structure** Dual database setup for authentication/sessions and game state persistence
 - **Auth DB** (`mmo_auth`): Users table, active_sessions table
 - **Game DB** (`mmo_game`): Players table with position/state data
 
@@ -45,66 +33,9 @@ This is a multiplayer online game (MMO) with a distributed architecture consisti
 3. Game server validates token and creates session
 4. Real-time position/chat updates via WebSocket
 5. Terrain chunks loaded on-demand from server
+6. Terrain chunks kept alive by NPC zones for semi persistence Hot -> Warm -> Cold
 
-## Development Commands
-
-### Backend Services
-
-```bash
-# Auth/Backend Server
-cd mmo-backend
-npm install
-node server.js  # Starts on port 8080
-
-# Game Server (.NET)
-cd mmo-game-server-dotnet/MMOGameServer
-dotnet restore
-dotnet run  # Starts WebSocket server on port 8080
-
-# Alternative build and run
-dotnet build
-dotnet bin/Debug/net8.0/MMOGameServer.dll
-
-# Development with environment variables
-cd mmo-game-server-dotnet/MMOGameServer
-export AUTH_DATABASE_URL="postgres://username:password@localhost:5432/mmo_auth"
-export GAME_DATABASE_URL="postgres://username:password@localhost:5432/mmo_game" 
-export JWT_SECRET="your-secret-key"
-export WORLD_NAME="world1-dotnet"
-dotnet run
-
-# Production build
-dotnet publish -c Release -o ./publish
-```
-
-### Unity Development
-
-1. Open `mmo-frontend/MMO_FrontEnd/` in Unity Editor 2022.3+
-2. Main scenes:
-   - `Assets/Scenes/MainMenu.unity` - Login/authentication
-   - `Assets/Scenes/PlayScene.unity` - Main game world
-   - `Assets/Scenes/Terrain_Test_Area.unity` - Terrain testing
-
-### Building Unity WebGL
-Use the custom Unity Editor tool:
-- Window → Build and Deploy → Build to `mmo-backend/public`
-
-### Database Setup
-
-```bash
-# Create databases
-psql -U postgres
-CREATE DATABASE mmo_auth;
-CREATE DATABASE mmo_game;
-
-# Import schemas
-psql -U postgres -d mmo_auth < mmo-db/auth_schema.sql
-psql -U postgres -d mmo_game < mmo-db/game_schema.sql
-```
-
-## Deployment (Fly.io)
-
-### Environment Variables Required
+### Environment Variables
 
 **Auth/Backend Server**:
 - `AUTH_DATABASE_URL`: PostgreSQL connection for auth DB
@@ -117,28 +48,6 @@ psql -U postgres -d mmo_game < mmo-db/game_schema.sql
 - `JWT_SECRET`: Must match auth server's secret
 - `WORLD_NAME`: Unique identifier for world instance
 - `PORT`: WebSocket server port (default 8080)
-
-### Deployment Process
-
-```bash
-# Deploy backend/auth server
-cd mmo-backend
-fly deploy -a mmo-auth-frontend-staging --config fly-staging.toml
-
-# Deploy game world server (.NET)
-cd mmo-game-server-dotnet/MMOGameServer
-fly deploy -a mmo-world1-staging --config worlds/staging/fly-world1-staging.toml
-```
-
-## Code Organization
-
-### Unity Scripts Structure
-- `Assets/Scripts/WebsocketHandling/` - Network communication
-- `Assets/Scripts/Terrain/` - Terrain generation and rendering
-- `Assets/Scripts/Player/` - Player movement and state
-- `Assets/Scripts/MainMenu/` - Authentication UI and logic
-- `Assets/Scripts/Chat/` - Chat system implementation
-- `Assets/Editor/` - Custom Unity editor tools
 
 ### Backend Structure
 - `mmo-backend/routes/auth.js` - Authentication endpoints
@@ -171,52 +80,6 @@ fly deploy -a mmo-world1-staging --config worlds/staging/fly-world1-staging.toml
 - `terrain/` - Terrain chunk JSON data (shared format with Unity)
 - `worlds/` - Fly.io deployment configurations for staging/production
 
-## Testing & Debugging
-
-### Unity Testing
-- Use Play Mode in Unity Editor for runtime testing
-- TerrainManager has context menu options for testing chunk loading
-- Check Unity Console for WebSocket connection status
-
-### Backend Testing
-**Node.js Backend**:
-- No automated tests configured yet
-- Use `console.log` for debugging
-
-**C# Game Server**:
-- Built-in .NET logging with configurable levels (Debug, Info, Warning, Error)
-- Health check endpoints: `/health` and `/api/health`
-- Use `dotnet run` for development with hot reload
-- Visual Studio/VS Code debugging support with breakpoints
-- WebSocket testing available at `ws://localhost:5096/ws` (development)
-- Swagger UI available at `http://localhost:5096/swagger` (if enabled)
-- Monitor Fly.io logs: `fly logs -a <app-name>`
-
-**C# Development Tools**:
-```bash
-# Watch mode for automatic rebuild on file changes
-dotnet watch run
-
-# Run with specific logging level
-dotnet run --configuration Debug
-ASPNETCORE_ENVIRONMENT=Development dotnet run
-
-# Database connection testing
-dotnet run --urls "http://localhost:8080"
-```
-
-### Common Issues
-- WebSocket connection failures: Check JWT_SECRET matches across services
-- Terrain not loading: Verify chunk JSON files exist in `terrain/` directory
-- Double login prevention: Active sessions table manages connection state
-
-**C# Game Server Specific**:
-- Missing environment variables: Server throws on startup if AUTH_DATABASE_URL or GAME_DATABASE_URL not set
-- Terrain path issues: Service tries multiple fallback paths (working dir, relative paths)
-- Database connection: SSL disabled for Fly.io internal connections
-- Port conflicts: Default development port is 5096, production uses PORT environment variable
-- Authentication timeout: Clients have 5 seconds to send auth message after WebSocket connection
-
 ## Important Implementation Details
 
 ### Terrain System
@@ -242,32 +105,6 @@ dotnet run --urls "http://localhost:8080"
 - Environment variables for all secrets
 - No sensitive data in client-side code
 
-## C# Game Server Architecture Details
-
-### Message-Driven Architecture (Refactored 2024)
-The C# game server uses a modern message-driven architecture with strongly-typed handlers and dependency injection:
-
-**Core Services** (Singletons):
-- **GameWorldService**: Manages all connected clients and handles broadcasting
-- **DatabaseService**: Handles PostgreSQL connections for both auth and game databases  
-- **TerrainService**: Loads and caches terrain chunks with automatic cleanup
-- **PathfindingService**: Implements A* algorithm for server-side movement validation
-- **GameLoopService**: Background hosted service running at 500ms intervals
-- **MessageProcessor**: Coordinates message deserialization and routing
-- **MessageRouter**: Routes strongly-typed messages to appropriate handlers
-
-**Message System**:
-- **Strongly-typed messages**: All WebSocket messages use typed classes (AuthMessage, MoveMessage, etc.)
-- **Polymorphic deserialization**: Custom JsonConverter automatically routes messages based on "type" field
-- **Handler pattern**: Each message type has dedicated handler class (AuthHandler, MoveHandler, etc.)
-- **Type safety**: Compile-time checking prevents message format errors
-
-**Handler Organization**:
-- `Handlers/Authentication/`: AuthHandler, LogoutHandler
-- `Handlers/Player/`: MoveHandler, CharacterCreationHandler, CharacterAttributesHandler  
-- `Handlers/Communication/`: ChatHandler, PingHandler
-- `Handlers/Session/`: HeartbeatHandler
-
 ### Key Architectural Decisions
 
 **Deterministic Game Loop**:
@@ -292,30 +129,87 @@ The C# game server uses a modern message-driven architecture with strongly-typed
 - Efficient JSON serialization using System.Text.Json
 - Connection pooling through Npgsql
 
-### Message System Benefits (2024 Refactor)
 
-**Type Safety & Developer Experience**:
-- Compile-time checking prevents message format errors
-- IntelliSense support for all message properties
-- Automatic JSON validation through strongly-typed classes
-- Clear separation between request/response message contracts
+***NPC IMPLEMENTATION TASK***
+NPCZones:
+handle their own lifetime and spawn, this system does not need changing, the code changes to NPC behaviour should take place purely with regards to the actual NPCs not their spawning, lifetime or chunks/zone loading and unloading.
 
-**Maintainability & Extensibility**:
-- Each handler is isolated and unit-testable
-- Easy to add new message types without touching existing code
-- Clear handler organization by functional domain
-- SOLID principles applied (Single Responsibility, Dependency Inversion)
+Currently the NPC functionality is:
 
-**Adding New Message Types**:
-1. Create message class in `Messages/Requests/` implementing `IGameMessage`
-2. Add message type to `MessageType` enum
-3. Update `GameMessageJsonConverter` switch statement
-4. Create handler implementing `IMessageHandler<YourMessage>`
-5. Register handler in `Program.cs` dependency injection
-6. Handler automatically receives strongly-typed messages
+- Spawn in zone, randomly select valid roam target in zone, idle for tick if selection fails valid x times.
 
-**Migration from Legacy System**:
-- WebSocketMiddleware reduced from 663 lines to 161 lines
-- All business logic moved to dedicated handler classes
-- Preserved all existing functionality and session management
-- No breaking changes to client-server protocol
+This is a good "Idle" state (true idle).
+
+What I want is to implement an OSRS like combat system. I will be simplifying things to start off with:
+
+
+I am going to break NPC AI down into a couple of states because they overlap a bit.
+
+- If we enter the tick and the targetUnit is not on an adjacent(cardinal NSEW not diagonal) tile to us, we take a greedy path step towards them (OSRS does greedy pathing for in combat, not A*, allowing for safes-potting etc)
+- If we enter the tick and the targetUnit is adjacent and our attack is not on cooldown, do Attack.
+- If we are exiting the tick (we might have just attacked this tick or be on cooldown) and the targetUnit has a move queued that takes them away from the adjacent tick, greedy match their movement to try and remain adjacent (diag-movement is always allowed but attacks must happen cardinal)
+- If the next move takes us out of our zone, return to Idle.
+- NPCs are processed in order so if we (in the future) have npc vs npc combat, the one processed 2nd essentially gets movment priority because they see the move of the lower priority NPC first (implicit order).
+
+plan:
+OSRS-like Combat System Implementation Plan
+ 
+Based on your clarifications, here's the updated plan: 
+ 
+1. Create CombatService (Services/CombatService.cs)
+ 
+- Centralized combat logic for NPCs and Players
+- Greedy pathfinding: Single-step movement toward target 
+- Adjacent checking: Cardinal only (NSEW) for attacks
+- Movement prediction: Check target's queued movement for follow logic 
+ 
+2. Update Player and NPC Models
+ 
+- Add to both Player.cs and NPC.cs:
+- IsAlive property 
+- AttackCooldownRemaining (ticks until can attack) 
+- AttackCooldown constant (ticks between attacks)
+- Add to NPC.cs only:
+- TargetPlayer reference (null when idle)
+- AIState enum (Idle, InCombat)
+ 
+3. Refactor GameLoopService (Services/GameLoopService.cs)
+ 
+- Replace ProcessPlayerMovement() with UpdatePlayer(): 
+a. Calculate player path/movement first
+b. Process any player combat actions 
+- Add UpdateNPC() method:
+a. Check combat state and target 
+b. Attack phase: If adjacent (cardinal), attack if cooldown expired
+c. Movement phase: If not adjacent, greedy step toward target
+d. Follow phase: Check target's queued move, match if moving away
+- Execution order: 
+a. All players update (paths calculated) 
+b. All NPCs update (can see player intended moves) 
+c. Apply movements and visibility updates
+ 
+4. Implement Greedy Pathfinding (in CombatService) 
+ 
+- GetGreedyStep(fromX, fromY, toX, toY): 
+- Returns single best tile toward target 
+- No full pathfinding, just distance reduction 
+- Validates walkability of chosen tile 
+ 
+5. Combat State Management (in NPCService) 
+ 
+- Zone boundary checking: If greedy step exits zone → return to Idle 
+- Target acquisition: Detect players within aggro range
+- Combat exit: Clear target when player dies/disconnects 
+ 
+6. Add Combat Methods
+ 
+- Player.TakeDamage(amount) - placeholder
+- NPC.TakeDamage(amount) - placeholder 
+- Attack execution with cooldown setting 
+ 
+7. Maintain Visibility System
+ 
+- Keep TerrainService chunk updates in UpdatePlayer()
+- Ensure NPC visibility updates work with new structure
+ 
+This approach processes players first so NPCs can react to their intended movements, matching OSRS mechanics. 
