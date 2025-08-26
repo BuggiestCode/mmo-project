@@ -1,5 +1,11 @@
 namespace MMOGameServer.Models;
 
+public enum NPCAIState
+{
+    Idle,
+    InCombat
+}
+
 public class NPC
 {
     private static int _nextNpcId = 1;
@@ -11,6 +17,14 @@ public class NPC
     public float X { get; set; }
     public float Y { get; set; }
     public bool IsDirty { get; set; }
+    
+    // Combat properties
+    public bool IsAlive { get; set; } = true;
+    public NPCAIState AIState { get; set; } = NPCAIState.Idle;
+    public Player? TargetPlayer { get; set; }
+    public int AttackCooldownRemaining { get; set; }
+    public int AttackCooldown { get; set; } = 4; // 4 ticks between attacks (2 seconds at 500ms tick rate)
+    public float AggroRange { get; set; } = 5.0f; // 5 tiles aggro range
     
     // Pathfinding
     private List<(float x, float y)> _currentPath = new();
@@ -86,6 +100,39 @@ public class NPC
         return _isMoving && (_currentPath.Count > 0 || _nextTile.HasValue);
     }
     
+    public void TakeDamage(int amount)
+    {
+        // Placeholder damage handling
+        IsDirty = true;
+        // TODO: Implement health system
+    }
+    
+    public (float x, float y)? GetQueuedMove()
+    {
+        // Returns the next queued move without consuming it
+        if (_isMoving && _currentPath.Count > 0)
+        {
+            return _currentPath[0];
+        }
+        return _nextTile;
+    }
+    
+    public void SetTarget(Player? target)
+    {
+        TargetPlayer = target;
+        if (target != null)
+        {
+            AIState = NPCAIState.InCombat;
+            ClearPath(); // Clear any roaming path when entering combat
+        }
+        else
+        {
+            AIState = NPCAIState.Idle;
+            AttackCooldownRemaining = 0; // Reset cooldown when leaving combat
+        }
+        IsDirty = true;
+    }
+    
     public object GetSnapshot()
     {
         return new
@@ -94,7 +141,8 @@ public class NPC
             type = Type,
             x = X,
             y = Y,
-            isMoving = _isMoving
+            isMoving = _isMoving,
+            inCombat = AIState == NPCAIState.InCombat
         };
     }
 }
