@@ -19,6 +19,11 @@ public class Player
     public int HairStyleIndex { get; set; }
     public bool IsMale { get; set; }
 
+    // Combat properties
+    public bool IsAlive { get; set; } = true;
+    public int AttackCooldownRemaining { get; set; }
+    public const int AttackCooldown = 3; // 3 ticks between attacks (1.5 seconds at 500ms tick rate)
+
     // Terrain/Visibility properties (moved from TerrainService dictionaries)
     public string? CurrentChunk { get; set; }
     public HashSet<string> VisibilityChunks { get; set; } = new();
@@ -104,6 +109,24 @@ public class Player
         return _isMoving && (_currentPath.Count > 0 || _nextTile.HasValue);
     }
     
+    public void TakeDamage(int amount)
+    {
+        // Placeholder damage handling
+        _logger?.LogInformation($"Player {UserId} took {amount} damage");
+        IsDirty = true;
+        // TODO: Implement health system
+    }
+    
+    public (float x, float y)? GetQueuedMove()
+    {
+        // Returns the next queued move without consuming it
+        if (_isMoving && _currentPath.Count > 0)
+        {
+            return _currentPath[0];
+        }
+        return _nextTile;
+    }
+    
     public object GetSnapshot()
     {
         return new
@@ -120,4 +143,6 @@ public class Player
             isMale = IsMale
         };
     }
+    
+    private static readonly ILogger<Player>? _logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<Player>();
 }
