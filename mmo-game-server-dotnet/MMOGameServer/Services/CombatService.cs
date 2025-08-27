@@ -14,8 +14,9 @@ public class CombatService
     }
     
     /// <summary>
-    /// Gets a single greedy step toward the target position.
-    /// Used for OSRS-style combat movement (not full pathfinding).
+    /// Gets a single greedy step toward the target position using Bresenham-like movement.
+    /// Prioritizes the longer axis and uses deterministic tiebreaking (North/South over East/West).
+    /// This creates natural diagonal movement patterns that resemble OSRS pathfinding.
     /// </summary>
     public (float x, float y)? GetGreedyStep(float fromX, float fromY, float toX, float toY)
     {
@@ -30,42 +31,78 @@ public class CombatService
             return null;
         }
         
-        // Calculate direction to target
-        var dx = Math.Sign(targetX - currentX);
-        var dy = Math.Sign(targetY - currentY);
+        // Calculate deltas
+        var deltaX = targetX - currentX;
+        var deltaY = targetY - currentY;
+        var absDeltaX = Math.Abs(deltaX);
+        var absDeltaY = Math.Abs(deltaY);
         
-        // Try diagonal move first (most direct)
-        if (dx != 0 && dy != 0)
+        // Get movement directions
+        var stepX = Math.Sign(deltaX);
+        var stepY = Math.Sign(deltaY);
+        
+        // If we need movement in both axes, try diagonal first (most efficient)
+        if (stepX != 0 && stepY != 0)
         {
-            var diagonalX = currentX + dx;
-            var diagonalY = currentY + dy;
-            if (_terrainService.ValidateMovement(diagonalX, diagonalY))
+            var newX = currentX + stepX;
+            var newY = currentY + stepY;
+            
+            // Don't move onto the target's tile
+            if (newX == targetX && newY == targetY)
             {
-                return (diagonalX, diagonalY);
+                // Target is diagonally adjacent, prefer cardinal moves to get to a cardinal-adjacent position
+                // This prevents moving onto the player when they're diagonal to us
+            }
+            else if (_terrainService.ValidateMovement(newX, newY))
+            {
+                return (newX, newY);
             }
         }
         
-        // Try horizontal move
-        if (dx != 0)
+        // If diagonal is blocked or only one axis needed, determine which axis to prioritize
+        bool prioritizeY = absDeltaY > absDeltaX || (absDeltaY == absDeltaX && absDeltaY > 0);
+        
+        // Try the prioritized axis first
+        if (prioritizeY && stepY != 0)
         {
-            var horizontalX = currentX + dx;
-            if (_terrainService.ValidateMovement(horizontalX, currentY))
+            var newY = currentY + stepY;
+            // Don't move onto target's tile and validate walkability
+            if ((currentX != targetX || newY != targetY) && _terrainService.ValidateMovement(currentX, newY))
             {
-                return (horizontalX, currentY);
+                return (currentX, newY);
+            }
+        }
+        else if (!prioritizeY && stepX != 0)
+        {
+            var newX = currentX + stepX;
+            // Don't move onto target's tile and validate walkability
+            if ((newX != targetX || currentY != targetY) && _terrainService.ValidateMovement(newX, currentY))
+            {
+                return (newX, currentY);
             }
         }
         
-        // Try vertical move
-        if (dy != 0)
+        // If prioritized axis is blocked, try the other axis
+        if (prioritizeY && stepX != 0)
         {
-            var verticalY = currentY + dy;
-            if (_terrainService.ValidateMovement(currentX, verticalY))
+            var newX = currentX + stepX;
+            // Don't move onto target's tile and validate walkability
+            if ((newX != targetX || currentY != targetY) && _terrainService.ValidateMovement(newX, currentY))
             {
-                return (currentX, verticalY);
+                return (newX, currentY);
+            }
+        }
+        else if (!prioritizeY && stepY != 0)
+        {
+            var newY = currentY + stepY;
+            // Don't move onto target's tile and validate walkability
+            if ((currentX != targetX || newY != targetY) && _terrainService.ValidateMovement(currentX, newY))
+            {
+                return (currentX, newY);
             }
         }
         
-        // No valid greedy move available
+        // No valid move available
         return null;
     }
     

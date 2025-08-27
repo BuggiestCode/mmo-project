@@ -20,6 +20,7 @@ builder.Services.AddSingleton<DatabaseService>();
 builder.Services.AddSingleton<GameWorldService>();
 builder.Services.AddSingleton<TerrainService>();
 builder.Services.AddSingleton<PathfindingService>();
+builder.Services.AddSingleton<CombatService>();
 builder.Services.AddSingleton<NPCService>();
 
 // Register message processing services

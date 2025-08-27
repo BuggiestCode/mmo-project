@@ -9,6 +9,7 @@ public class NPCService
     private readonly TerrainService _terrainService;
     private readonly PathfindingService _pathfindingService;
     private readonly GameWorldService _gameWorld;
+    private readonly CombatService _combatService;
     private readonly ILogger<NPCService> _logger;
     private readonly ConcurrentDictionary<string, NPCZone> _zones = new();
     private readonly ConcurrentDictionary<int, NPC> _allNpcs = new();
@@ -23,11 +24,12 @@ public class NPCService
     // Visibility tracking for NPCs (similar to players)
     private readonly ConcurrentDictionary<int, (HashSet<int> newlyVisible, HashSet<int> noLongerVisible)> _pendingNpcVisibilityChanges = new();
     
-    public NPCService(TerrainService terrainService, PathfindingService pathfindingService, GameWorldService gameWorld, ILogger<NPCService> logger)
+    public NPCService(TerrainService terrainService, PathfindingService pathfindingService, GameWorldService gameWorld, CombatService combatService, ILogger<NPCService> logger)
     {
         _terrainService = terrainService;
         _pathfindingService = pathfindingService;
         _gameWorld = gameWorld;
+        _combatService = combatService;
         _logger = logger;
         
         // Check for warm zones that should transition to cold every 5 seconds
@@ -484,11 +486,100 @@ public class NPCService
         npc.UpdatePosition(newX, newY);
     }
     
+    // MOVEMENT PHASE - handles target acquisition and movement only
     public async Task ProcessNPCMovement(NPC npc)
     {
-        // NPCs process movement as long as zone exists (Hot or Warm)
-        // Cold zones are destroyed, so this won't be called for them
-
+        // Check for target acquisition if idle
+        if (npc.AIState == NPCAIState.Idle)
+        {
+            var authenticatedClients = _gameWorld.GetAuthenticatedClients();
+            foreach (var client in authenticatedClients)
+            {
+                if (client.Player != null && client.Player.IsAlive && 
+                    _combatService.IsWithinRange(npc.X, npc.Y, client.Player.X, client.Player.Y, npc.AggroRange))
+                {
+                    // Check if player is within the NPC's zone - only aggro if they are
+                    if (npc.Zone.ContainsPoint(client.Player.X, client.Player.Y))
+                    {
+                        // Acquire target
+                        npc.SetTarget(client.Player);
+                        _logger.LogInformation($"NPC {npc.Id} acquired target player {client.Player.UserId}");
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Handle movement based on state
+        if (npc.AIState == NPCAIState.InCombat && npc.TargetPlayer != null)
+        {
+            // Check if target is still valid
+            if (!npc.TargetPlayer.IsAlive)
+            {
+                npc.SetTarget(null);
+                _logger.LogInformation($"NPC {npc.Id} lost target (dead), returning to idle");
+                await ProcessIdleMovement(npc);
+                return;
+            }
+            
+            var targetX = npc.TargetPlayer.X;
+            var targetY = npc.TargetPlayer.Y;
+            
+            // If not adjacent, take greedy step toward target
+            if (!_combatService.IsAdjacentCardinal(npc.X, npc.Y, targetX, targetY))
+            {
+                var greedyStep = _combatService.GetGreedyStep(npc.X, npc.Y, targetX, targetY);
+                if (greedyStep.HasValue)
+                {
+                    // Check if move would take us out of zone
+                    if (!npc.Zone.ContainsPoint(greedyStep.Value.x, greedyStep.Value.y))
+                    {
+                        // Would leave zone, return to idle
+                        npc.SetTarget(null);
+                        _logger.LogInformation($"NPC {npc.Id} cannot pursue target out of zone, returning to idle");
+                        await ProcessIdleMovement(npc);
+                        return;
+                    }
+                    
+                    // Move toward target
+                    UpdateNPCPosition(npc, greedyStep.Value.x, greedyStep.Value.y);
+                }
+            }
+            // If adjacent, don't move (combat will be handled in combat phase)
+        }
+        else
+        {
+            // Idle movement
+            await ProcessIdleMovement(npc);
+        }
+    }
+    
+    // COMBAT PHASE - handles attacks only, board state is finalized
+    public async Task ProcessNPCCombat(NPC npc)
+    {
+        // Update cooldown
+        _combatService.UpdateCooldown(npc);
+        
+        // Only process combat if in combat state with valid target
+        if (npc.AIState != NPCAIState.InCombat || npc.TargetPlayer == null || !npc.TargetPlayer.IsAlive)
+        {
+            return;
+        }
+        
+        // Check if adjacent and can attack
+        if (_combatService.IsAdjacentCardinal(npc.X, npc.Y, npc.TargetPlayer.X, npc.TargetPlayer.Y))
+        {
+            if (npc.AttackCooldownRemaining == 0)
+            {
+                _combatService.ExecuteAttack(npc, npc.TargetPlayer);
+            }
+        }
+        
+        await Task.CompletedTask;
+    }
+    
+    private async Task ProcessIdleMovement(NPC npc)
+    {
         // Get next move from current path
         var nextMove = npc.GetNextMove();
         if (nextMove.HasValue)
@@ -506,6 +597,7 @@ public class NPCService
             }
         }
     }
+    
     
     private async Task GenerateRandomRoamPath(NPC npc, NPCZone zone)
     {

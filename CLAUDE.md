@@ -156,58 +156,30 @@ OSRS-like Combat System Implementation Plan
  
 Based on your clarifications, here's the updated plan: 
  
-1. Create CombatService (Services/CombatService.cs)
+1. Refactor GameLoopService (Services/GameLoopService.cs)
  
-- Centralized combat logic for NPCs and Players
-- Greedy pathfinding: Single-step movement toward target 
-- Adjacent checking: Cardinal only (NSEW) for attacks
-- Movement prediction: Check target's queued movement for follow logic 
+Calculate player path/movement first
+Calculate NPC path/movement first
+
+'tile board state is now finalized'
+
+Process any player combat actions If adjacent (cardinal), attack if cooldown expired
+Process any npc combat actions If adjacent (cardinal), attack if cooldown expired
  
-2. Update Player and NPC Models
- 
-- Add to both Player.cs and NPC.cs:
-- IsAlive property 
-- AttackCooldownRemaining (ticks until can attack) 
-- AttackCooldown constant (ticks between attacks)
-- Add to NPC.cs only:
-- TargetPlayer reference (null when idle)
-- AIState enum (Idle, InCombat)
- 
-3. Refactor GameLoopService (Services/GameLoopService.cs)
- 
-- Replace ProcessPlayerMovement() with UpdatePlayer(): 
-a. Calculate player path/movement first
-b. Process any player combat actions 
-- Add UpdateNPC() method:
-a. Check combat state and target 
-b. Attack phase: If adjacent (cardinal), attack if cooldown expired
-c. Movement phase: If not adjacent, greedy step toward target
-d. Follow phase: Check target's queued move, match if moving away
-- Execution order: 
-a. All players update (paths calculated) 
-b. All NPCs update (can see player intended moves) 
-c. Apply movements and visibility updates
- 
-4. Implement Greedy Pathfinding (in CombatService) 
+2. Implement Greedy Pathfinding (in CombatService) 
  
 - GetGreedyStep(fromX, fromY, toX, toY): 
 - Returns single best tile toward target 
 - No full pathfinding, just distance reduction 
 - Validates walkability of chosen tile 
  
-5. Combat State Management (in NPCService) 
+3. Combat State Management (in NPCService) 
  
 - Zone boundary checking: If greedy step exits zone → return to Idle 
 - Target acquisition: Detect players within aggro range
 - Combat exit: Clear target when player dies/disconnects 
- 
-6. Add Combat Methods
- 
-- Player.TakeDamage(amount) - placeholder
-- NPC.TakeDamage(amount) - placeholder 
-- Attack execution with cooldown setting 
- 
-7. Maintain Visibility System
+
+4. Maintain Visibility System
  
 - Keep TerrainService chunk updates in UpdatePlayer()
 - Ensure NPC visibility updates work with new structure

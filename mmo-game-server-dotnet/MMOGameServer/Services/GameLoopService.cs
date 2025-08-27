@@ -80,47 +80,74 @@ public class GameLoopService : BackgroundService
         var clients = _gameWorld.GetAuthenticatedClients().ToList();
         if (!clients.Any() && _npcService == null) return;
         
-        var movementTasks = new List<Task<(ConnectedClient client, (float x, float y)? nextMove)>>();
+        // === MOVEMENT PHASE ===
         
-        // Start all player movement calculations in parallel
+        // Phase 1: Calculate and apply all player movements
+        var playerMovementTasks = new List<Task<(ConnectedClient client, (float x, float y)? nextMove)>>();
         foreach (var client in clients)
         {
-            if (client.Player?.HasActivePath() == true)
+            if (client.Player != null)
             {
-                movementTasks.Add(ProcessPlayerMovementAsync(client));
+                playerMovementTasks.Add(ProcessPlayerMovementAsync(client));
             }
         }
         
-        // Process NPC movements if service is available
-        var npcMovementTasks = new List<Task>();
-        if (_npcService != null)
-        {
-            var activeNpcs = _npcService.GetActiveNPCs();
-            foreach (var npc in activeNpcs)
-            {
-                npcMovementTasks.Add(_npcService.ProcessNPCMovement(npc));
-            }
-        }
+        // Wait for all player movement calculations
+        var playerMovementResults = await Task.WhenAll(playerMovementTasks);
         
-        // Wait for ALL movement calculations to complete (deterministic)
-        var movementResults = await Task.WhenAll(movementTasks);
-        if (npcMovementTasks.Any())
-        {
-            await Task.WhenAll(npcMovementTasks);
-        }
-        
-        // Apply all player movement results (this triggers visibility updates in TerrainService)
-        foreach (var (client, nextMove) in movementResults)
+        // Apply player movement results
+        foreach (var (client, nextMove) in playerMovementResults)
         {
             if (nextMove.HasValue)
             {
-                // Update chunk tracking and get visibility changes
+                // Update chunk tracking and visibility
                 _terrainService.UpdatePlayerChunk(client.Player!, nextMove.Value.x, nextMove.Value.y);
                 
                 // Update player position
                 client.Player!.UpdatePosition(nextMove.Value.x, nextMove.Value.y);
             }
         }
+        
+        // Phase 2: Calculate and apply all NPC movements
+        List<NPC>? activeNpcs = null;
+        if (_npcService != null)
+        {
+            activeNpcs = _npcService.GetActiveNPCs();
+            var npcMovementTasks = new List<Task>();
+            foreach (var npc in activeNpcs)
+            {
+                npcMovementTasks.Add(_npcService.ProcessNPCMovement(npc));
+            }
+            
+            if (npcMovementTasks.Any())
+            {
+                await Task.WhenAll(npcMovementTasks);
+            }
+        }
+
+        // === BOARD STATE IS NOW FINALIZED ===
+        
+        /*
+        // === COMBAT PHASE ===
+
+        // Phase 3: Process player combat actions
+        foreach (var client in clients)
+        {
+            if (client.Player != null)
+            {
+                await ProcessPlayerCombat(client);
+            }
+        }
+        
+        // Phase 4: Process NPC combat actions
+        if (_npcService != null && activeNpcs != null)
+        {
+            foreach (var npc in activeNpcs)
+            {
+                await _npcService.ProcessNPCCombat(npc);
+            }
+        }
+        */
         
         // Build snapshot of all dirty players
         var allPlayerSnapshots = new Dictionary<int, object>();
@@ -137,20 +164,6 @@ public class GameLoopService : BackgroundService
         var allNpcSnapshots = new Dictionary<int, object>();
         if (_npcService != null)
         {
-            /*
-            // DEBUG: Print all active NPCs each tick
-            var allNpcs = _npcService.GetAllNPCs().ToList();
-            if (allNpcs.Count > 0)
-            {
-                _logger.LogInformation($"[NPC DEBUG] Total active NPCs: {allNpcs.Count}");
-                foreach (var npc in allNpcs)
-                {
-                    var zoneExists = _npcService.GetZone($"{npc.Zone.RootChunkX}_{npc.Zone.RootChunkY}_{npc.ZoneId}") != null;
-                    _logger.LogInformation($"[NPC DEBUG] NPC {npc.Id}: Type={npc.Type}, Pos=({npc.X:F1},{npc.Y:F1}), Zone={npc.ZoneId}, ZoneExists={zoneExists}, IsDirty={npc.IsDirty}");
-                }
-            }
-            */
-            
             var dirtyNpcs = _npcService.GetDirtyNPCs();
             foreach (var npc in dirtyNpcs)
             {
@@ -177,6 +190,17 @@ public class GameLoopService : BackgroundService
             var previousVisibleNpcIds = client.Player.VisibleNPCs ?? new HashSet<int>();
             var newlyVisibleNpcs = visibleNpcIds.Except(previousVisibleNpcIds).ToHashSet();
             var noLongerVisibleNpcs = previousVisibleNpcIds.Except(visibleNpcIds).ToHashSet();
+            
+            // DEBUG: Log NPC visibility changes
+            if (newlyVisibleNpcs.Any())
+            {
+                _logger.LogDebug($"Player {playerId} newly visible NPCs: [{string.Join(", ", newlyVisibleNpcs)}]");
+            }
+            if (noLongerVisibleNpcs.Any())
+            {
+                _logger.LogDebug($"Player {playerId} no longer visible NPCs: [{string.Join(", ", noLongerVisibleNpcs)}]");
+            }
+            
             client.Player.VisibleNPCs = visibleNpcIds;
             
             // Separate self update from other players
@@ -239,8 +263,23 @@ public class GameLoopService : BackgroundService
     {
         return await Task.Run(() =>
         {
-            var nextMove = client.Player?.GetNextMove();
+            if (client.Player == null) return (client, null);
+            
+            // Just process movement path
+            var nextMove = client.Player.GetNextMove();
+            
             return (client, nextMove);
+        });
+    }
+    
+    private async Task ProcessPlayerCombat(ConnectedClient client)
+    {
+        await Task.Run(() =>
+        {
+            if (client.Player == null || !client.Player.IsAlive) return;
+            
+            // TODO: Implement player combat when player can target NPCs
+            // For now, players don't initiate combat
         });
     }
 

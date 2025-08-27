@@ -259,16 +259,6 @@
         true,
         true
     ],
-    "zones": [
-        {
-            "id": 1,
-            "minX": -46,
-            "minY": -22,
-            "maxX": -31,
-            "maxY": -14,
-            "npcType": "goblin",
-            "maxCount": 5
-        }
-    ],
+    "zones": [],
     "foreignZones": []
 }

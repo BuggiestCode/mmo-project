@@ -260,11 +260,5 @@
         false
     ],
     "zones": [],
-    "foreignZones": [
-        {
-            "rootChunkX": -2,
-            "rootChunkY": 0,
-            "zoneId": 2
-        }
-    ]
+    "foreignZones": []
 }
