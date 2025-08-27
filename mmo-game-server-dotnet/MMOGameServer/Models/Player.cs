@@ -1,12 +1,13 @@
 namespace MMOGameServer.Models;
 
-public class Player
+public class Player : Character
 {
     public int UserId { get; set; }
-    public float X { get; set; }
-    public float Y { get; set; }
+    public override int Id => UserId;
+    public override float X { get; set; }
+    public override float Y { get; set; }
     public int Facing { get; set; }
-    public bool IsDirty { get; set; }
+    public override bool IsDirty { get; set; }
     public bool DoNetworkHeartbeat { get; set; }
     
     public bool CharacterCreatorCompleted{ get; set; }
@@ -20,9 +21,7 @@ public class Player
     public bool IsMale { get; set; }
 
     // Combat properties
-    public bool IsAlive { get; set; } = true;
-    public int AttackCooldownRemaining { get; set; }
-    public const int AttackCooldown = 3; // 3 ticks between attacks (1.5 seconds at 500ms tick rate)
+    public override int AttackCooldown => 3; // 3 ticks between attacks (1.5 seconds at 500ms tick rate)
 
     // Terrain/Visibility properties (moved from TerrainService dictionaries)
     public string? CurrentChunk { get; set; }
@@ -109,13 +108,6 @@ public class Player
         return _isMoving && (_currentPath.Count > 0 || _nextTile.HasValue);
     }
     
-    public void TakeDamage(int amount)
-    {
-        // Placeholder damage handling
-        _logger?.LogInformation($"Player {UserId} took {amount} damage");
-        IsDirty = true;
-        // TODO: Implement health system
-    }
     
     public (float x, float y)? GetQueuedMove()
     {
@@ -129,7 +121,7 @@ public class Player
     
     public object GetSnapshot()
     {
-        return new
+        var snapshot = new
         {
             id = UserId,
             x = X,
@@ -140,9 +132,10 @@ public class Player
             underColSwatchIndex = UnderColSwatchIndex,
             bootsColSwatchIndex = BootsColSwatchIndex,
             hairStyleIndex = HairStyleIndex,
-            isMale = IsMale
+            isMale = IsMale,
+            damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null
         };
+        
+        return snapshot;
     }
-    
-    private static readonly ILogger<Player>? _logger = LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<Player>();
 }

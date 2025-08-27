@@ -6,24 +6,23 @@ public enum NPCAIState
     InCombat
 }
 
-public class NPC
+public class NPC : Character
 {
     private static int _nextNpcId = 1;
     
-    public int Id { get; set; }
+    private int _id;
+    public override int Id => _id;
     public int ZoneId { get; set; }
     public NPCZone Zone { get; set; }
     public string Type { get; set; }
-    public float X { get; set; }
-    public float Y { get; set; }
-    public bool IsDirty { get; set; }
+    public override float X { get; set; }
+    public override float Y { get; set; }
+    public override bool IsDirty { get; set; }
     
     // Combat properties
-    public bool IsAlive { get; set; } = true;
     public NPCAIState AIState { get; set; } = NPCAIState.Idle;
     public Player? TargetPlayer { get; set; }
-    public int AttackCooldownRemaining { get; set; }
-    public int AttackCooldown { get; set; } = 4; // 4 ticks between attacks (2 seconds at 500ms tick rate)
+    public override int AttackCooldown => 4; // 4 ticks between attacks (2 seconds at 500ms tick rate)
     public float AggroRange { get; set; } = 5.0f; // 5 tiles aggro range
     
     // Pathfinding
@@ -36,7 +35,7 @@ public class NPC
     
     public NPC(int zoneId, NPCZone zone, string type, float x, float y)
     {
-        Id = _nextNpcId++;
+        _id = _nextNpcId++;
         ZoneId = zoneId;
         Zone = zone;
         Type = type;
@@ -100,12 +99,6 @@ public class NPC
         return _isMoving && (_currentPath.Count > 0 || _nextTile.HasValue);
     }
     
-    public void TakeDamage(int amount)
-    {
-        // Placeholder damage handling
-        IsDirty = true;
-        // TODO: Implement health system
-    }
     
     public (float x, float y)? GetQueuedMove()
     {
@@ -142,7 +135,8 @@ public class NPC
             x = X,
             y = Y,
             isMoving = _isMoving,
-            inCombat = AIState == NPCAIState.InCombat
+            inCombat = AIState == NPCAIState.InCombat,
+            damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null
         };
     }
 }

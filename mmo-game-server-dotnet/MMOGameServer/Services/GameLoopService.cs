@@ -13,6 +13,7 @@ public class GameLoopService : BackgroundService
     private readonly TerrainService _terrainService;
     private readonly DatabaseService _databaseService;
     private readonly NPCService? _npcService;
+    private readonly CombatService? _combatService;
     private readonly ILogger<GameLoopService> _logger;
     private readonly int _tickRate = 500; // 500ms tick rate matching JavaScript
     private readonly Timer _heartbeatTimer;
@@ -23,12 +24,14 @@ public class GameLoopService : BackgroundService
         TerrainService terrainService,
         DatabaseService databaseService,
         ILogger<GameLoopService> logger,
-        NPCService? npcService = null)
+        NPCService? npcService = null,
+        CombatService? combatService = null)
     {
         _gameWorld = gameWorld;
         _terrainService = terrainService;
         _databaseService = databaseService;
         _npcService = npcService;
+        _combatService = combatService;
         _logger = logger;
         
         // Separate timer for heartbeat/cleanup (30 seconds)
@@ -127,7 +130,6 @@ public class GameLoopService : BackgroundService
 
         // === BOARD STATE IS NOW FINALIZED ===
         
-        /*
         // === COMBAT PHASE ===
 
         // Phase 3: Process player combat actions
@@ -147,8 +149,9 @@ public class GameLoopService : BackgroundService
                 await _npcService.ProcessNPCCombat(npc);
             }
         }
-        */
         
+        // === POST-COMBAT CLEANUP ===
+
         // Build snapshot of all dirty players
         var allPlayerSnapshots = new Dictionary<int, object>();
         foreach (var client in clients)
@@ -257,6 +260,25 @@ public class GameLoopService : BackgroundService
         
         // Send heartbeat ticks to clients that have network heartbeat enabled
         await SendHeartbeatTicksAsync(clients);
+        
+        // === END-OF-TICK CLEANUP ===
+        
+        // Clear combat service tick data
+        _combatService?.ClearTickData();
+        
+        // Clear damage tracking for all characters
+        foreach (var client in clients)
+        {
+            client.Player?.EndTick();
+        }
+        
+        if (_npcService != null)
+        {
+            foreach (var npc in _npcService.GetAllNPCs())
+            {
+                npc.EndTick();
+            }
+        }
     }
 
     private async Task<(ConnectedClient client, (float x, float y)? nextMove)> ProcessPlayerMovementAsync(ConnectedClient client)
@@ -276,7 +298,7 @@ public class GameLoopService : BackgroundService
     {
         await Task.Run(() =>
         {
-            if (client.Player == null || !client.Player.IsAlive) return;
+            if (client.Player == null) return;  //  || !client.Player.IsAlive Removing alive checks until the end of tick (we allow for cross killing in this game)
             
             // TODO: Implement player combat when player can target NPCs
             // For now, players don't initiate combat

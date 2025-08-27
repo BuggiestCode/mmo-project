@@ -2,10 +2,22 @@ using MMOGameServer.Models;
 
 namespace MMOGameServer.Services;
 
+public class CombatAttack
+{
+    public int AttackerId { get; set; }
+    public string AttackerType { get; set; } // "Player" or "NPC"
+    public int TargetId { get; set; }
+    public string TargetType { get; set; } // "Player" or "NPC"
+    public int Damage { get; set; }
+    public float TargetX { get; set; }
+    public float TargetY { get; set; }
+}
+
 public class CombatService
 {
     private readonly TerrainService _terrainService;
     private readonly ILogger<CombatService> _logger;
+    private readonly List<CombatAttack> _currentTickAttacks = new();
     
     public CombatService(TerrainService terrainService, ILogger<CombatService> logger)
     {
@@ -148,7 +160,7 @@ public class CombatService
     }
     
     /// <summary>
-    /// Executes an attack from attacker to target.
+    /// Executes an attack from NPC attacker to Player target.
     /// Returns true if attack was successful.
     /// </summary>
     public bool ExecuteAttack(NPC attacker, Player target)
@@ -169,6 +181,18 @@ public class CombatService
         var damage = 1; // Placeholder damage
         target.TakeDamage(damage);
         
+        // Record attack for visualization and centralized tracking
+        _currentTickAttacks.Add(new CombatAttack
+        {
+            AttackerId = attacker.Id,
+            AttackerType = "NPC",
+            TargetId = target.Id,
+            TargetType = "Player",
+            Damage = damage,
+            TargetX = target.X,
+            TargetY = target.Y
+        });
+        
         // Set attack cooldown
         attacker.AttackCooldownRemaining = attacker.AttackCooldown;
         attacker.IsDirty = true;
@@ -178,13 +202,85 @@ public class CombatService
     }
     
     /// <summary>
-    /// Decrements attack cooldown for an NPC.
+    /// Executes an attack from Player attacker to NPC target.
+    /// Returns true if attack was successful.
     /// </summary>
-    public void UpdateCooldown(NPC npc)
+    public bool ExecuteAttack(Player attacker, NPC target)
     {
-        if (npc.AttackCooldownRemaining > 0)
+        if (!IsAdjacentCardinal(attacker.X, attacker.Y, target.X, target.Y))
         {
-            npc.AttackCooldownRemaining--;
+            _logger.LogWarning($"Player {attacker.UserId} tried to attack NPC {target.Id} but not adjacent (cardinal)");
+            return false;
         }
+        
+        if (attacker.AttackCooldownRemaining > 0)
+        {
+            _logger.LogDebug($"Player {attacker.UserId} attack on cooldown for {attacker.AttackCooldownRemaining} more ticks");
+            return false;
+        }
+        
+        // Execute attack
+        var damage = 1; // Placeholder damage
+        target.TakeDamage(damage);
+        
+        // Record attack for visualization and centralized tracking
+        _currentTickAttacks.Add(new CombatAttack
+        {
+            AttackerId = attacker.Id,
+            AttackerType = "Player",
+            TargetId = target.Id,
+            TargetType = "NPC",
+            Damage = damage,
+            TargetX = target.X,
+            TargetY = target.Y
+        });
+        
+        // Set attack cooldown
+        attacker.AttackCooldownRemaining = attacker.AttackCooldown;
+        attacker.IsDirty = true;
+        
+        _logger.LogInformation($"Player {attacker.UserId} attacked NPC {target.Id} for {damage} damage");
+        return true;
+    }
+    
+    /// <summary>
+    /// Decrements attack cooldown for a Character.
+    /// </summary>
+    public void UpdateCooldown(Character character)
+    {
+        if (character.AttackCooldownRemaining > 0)
+        {
+            character.AttackCooldownRemaining--;
+        }
+    }
+    
+    /// <summary>
+    /// Gets all attacks that occurred this tick for visualization and analysis.
+    /// </summary>
+    public IReadOnlyList<CombatAttack> GetCurrentTickAttacks()
+    {
+        return _currentTickAttacks.AsReadOnly();
+    }
+    
+    /// <summary>
+    /// Gets the top damage amounts received by a specific target this tick.
+    /// Used for damage splat visualization.
+    /// </summary>
+    public List<int> GetTopDamageForTarget(int targetId, string targetType, int maxCount = 4)
+    {
+        return _currentTickAttacks
+            .Where(attack => attack.TargetId == targetId && attack.TargetType == targetType)
+            .Select(attack => attack.Damage)
+            .OrderByDescending(damage => damage)
+            .Take(maxCount)
+            .ToList();
+    }
+    
+    /// <summary>
+    /// Clears all combat data from this tick. Call at end of game loop.
+    /// </summary>
+    public void ClearTickData()
+    {
+        _currentTickAttacks.Clear();
     }
 }

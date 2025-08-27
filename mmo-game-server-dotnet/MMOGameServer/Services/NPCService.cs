@@ -561,7 +561,7 @@ public class NPCService
         _combatService.UpdateCooldown(npc);
         
         // Only process combat if in combat state with valid target
-        if (npc.AIState != NPCAIState.InCombat || npc.TargetPlayer == null || !npc.TargetPlayer.IsAlive)
+        if (npc.AIState != NPCAIState.InCombat || npc.TargetPlayer == null) //  || !npc.TargetPlayer.IsAlive Removing alive checks until the end of tick (we allow for cross killing in this game)
         {
             return;
         }
