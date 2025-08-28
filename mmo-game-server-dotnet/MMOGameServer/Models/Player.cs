@@ -127,12 +127,6 @@ public class Player : Character
             x = X,
             y = Y,
             isMoving = _isMoving,
-            hairColSwatchIndex = HairColSwatchIndex,
-            skinColSwatchIndex = SkinColSwatchIndex,
-            underColSwatchIndex = UnderColSwatchIndex,
-            bootsColSwatchIndex = BootsColSwatchIndex,
-            hairStyleIndex = HairStyleIndex,
-            isMale = IsMale,
             damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null
         };
         
