@@ -229,10 +229,10 @@ public class AuthHandler : IMessageHandler<AuthMessage>
     private async Task SpawnWorldPlayerAsync(ConnectedClient client)
     {
         if (client.Player == null) return;
-        
-        // Update player chunk and get visibility
-        var (newlyVisible, _) = _terrain.UpdatePlayerChunk(client.Player, client.Player.X, client.Player.Y);
-        
+
+        // Spawn player on chunk (redundant for soft reconnect but whatever)
+        _terrain.UpdatePlayerChunk(client.Player, client.Player.X, client.Player.Y);
+
         // Build spawn message
         var spawnMessage = new
         {
@@ -257,29 +257,25 @@ public class AuthHandler : IMessageHandler<AuthMessage>
         // Send spawn message
         await client.SendMessageAsync(spawnMessage);
 
-
+        // Hard build visibility arrays to cover both connect and soft reconnects
         var visibleNpcIds = _npcService?.GetVisibleNPCs(client.Player) ?? new HashSet<int>();
-        var visibleNPCsData = _npcService?.GetNPCSnapshots(visibleNpcIds);
+        var visiblePlayerIDs = _terrain?.GetVisiblePlayers(client.Player) ?? new HashSet<int>();
 
         // Send state update with visible players and NPCs
-        if (newlyVisible.Any() || (visibleNPCsData != null && visibleNPCsData.Any()))
+        if (visiblePlayerIDs.Any() || visibleNpcIds.Any())
         {
-            var visiblePlayersData = _gameWorld.GetFullPlayerData(newlyVisible);
-            
+            var visiblePlayersData = _gameWorld?.GetFullPlayerData(visiblePlayerIDs) ?? new List<object>();
+            var visibleNPCsData = _npcService?.GetNPCSnapshots(visibleNpcIds) ?? new List<object>();
+
             // Update player's visible NPCs tracking
             client.Player.VisibleNPCs = visibleNpcIds;
 
             var stateMessage = new StateMessage
             {
-                SelfStateUpdate = null,
-                Players = null,
-                Npcs = null,
                 ClientsToLoad = visiblePlayersData?.Any() == true ? visiblePlayersData : null,
-                ClientsToUnload = null,
                 NpcsToLoad = visibleNPCsData?.Any() == true ? visibleNPCsData : null,
-                NpcsToUnload = null
             };
-            
+
             await client.SendMessageAsync(stateMessage);
         }
     }
