@@ -169,17 +169,19 @@ public class AuthHandler : IMessageHandler<AuthMessage>
                 return;
             }
             
+            /*
             // Send success response
             await client.SendMessageAsync(new AuthResponse
             {
                 Success = true,
                 UserId = userId,
-                Position = new AuthResponse.PositionData 
-                { 
-                    X = player.X, 
-                    Y = player.Y 
+                Position = new AuthResponse.PositionData
+                {
+                    X = player.X,
+                    Y = player.Y
                 }
             });
+            */
             
             _logger.LogInformation($"Player {userId} ({username}) authorized successfully");
             

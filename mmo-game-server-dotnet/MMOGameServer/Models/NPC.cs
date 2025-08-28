@@ -22,7 +22,7 @@ public class NPC : Character
     // Combat properties
     public NPCAIState AIState { get; set; } = NPCAIState.Idle;
     public Player? TargetPlayer { get; set; }
-    public override int AttackCooldown => 4; // 4 ticks between attacks (2 seconds at 500ms tick rate)
+    public override int AttackCooldown => 0; // 4 ticks between attacks (2 seconds at 500ms tick rate)
     public float AggroRange { get; set; } = 5.0f; // 5 tiles aggro range
     
     // Pathfinding
