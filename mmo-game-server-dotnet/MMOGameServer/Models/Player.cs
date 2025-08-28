@@ -30,7 +30,6 @@ public class Player : Character
     
     private List<(float x, float y)> _currentPath = new();
     private (float x, float y)? _nextTile;
-    private bool _isMoving;
 
     public Player(int userId, float x = 0, float y = 0)
     {
@@ -40,7 +39,7 @@ public class Player : Character
         Facing = 0;
         IsDirty = false;
         DoNetworkHeartbeat = false;
-        _isMoving = false;
+        _isMoving = false; // Initialize inherited field
     }
     
     public void SetPath(List<(float x, float y)>? path)
@@ -68,7 +67,7 @@ public class Player : Character
         
         if (_currentPath.Count == 0)
         {
-            _isMoving = false;
+            ClearMovementState();
         }
         
         IsDirty = true;
@@ -78,18 +77,16 @@ public class Player : Character
         return _nextTile;
     }
     
-    public void UpdatePosition(float x, float y)
+    public override void UpdatePosition(float x, float y)
     {
-        X = x;
-        Y = y;
-        IsDirty = true;
+        base.UpdatePosition(x, y);
     }
     
     public void ClearPath()
     {
         _currentPath.Clear();
         _nextTile = null;
-        _isMoving = false;
+        ClearMovementState();
         Console.WriteLine($"Player {UserId} path cleared");
     }
     
@@ -126,7 +123,7 @@ public class Player : Character
             id = UserId,
             x = X,
             y = Y,
-            isMoving = _isMoving,
+            isMoving = IsMoving,
             damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null
         };
         

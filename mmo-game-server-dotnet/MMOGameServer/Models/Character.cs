@@ -7,6 +7,10 @@ public abstract class Character
     public abstract float Y { get; set; }
     public abstract bool IsDirty { get; set; }
     
+    // Movement tracking
+    protected bool _isMoving;
+    public bool IsMoving => _isMoving;
+    
     // Combat properties
     public bool IsAlive { get; set; } = true;
     public int AttackCooldownRemaining { get; set; }
@@ -42,4 +46,28 @@ public abstract class Character
     
     public bool TookDamageLastTick => DamageTakenLastTick.Any();
     public int TotalDamageLastTick => DamageTakenLastTick.Sum();
+    
+    /// <summary>
+    /// Updates the character's position and marks them as moving and dirty.
+    /// Used for both pathfinding and greedy step movement.
+    /// </summary>
+    public virtual void UpdatePosition(float x, float y)
+    {
+        // Only set moving if position actually changed
+        if (X != x || Y != y)
+        {
+            X = x;
+            Y = y;
+            _isMoving = true;
+            IsDirty = true;
+        }
+    }
+    
+    /// <summary>
+    /// Clears movement state. Should be called when movement ends.
+    /// </summary>
+    protected void ClearMovementState()
+    {
+        _isMoving = false;
+    }
 }
