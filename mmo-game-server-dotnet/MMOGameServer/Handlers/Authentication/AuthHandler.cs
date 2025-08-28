@@ -12,6 +12,7 @@ public class AuthHandler : IMessageHandler<AuthMessage>
     private readonly GameWorldService _gameWorld;
     private readonly DatabaseService _database;
     private readonly TerrainService _terrain;
+    private readonly NPCService _npcService;
     private readonly JwtSecurityTokenHandler _tokenHandler;
     private readonly ILogger<AuthHandler> _logger;
     
@@ -19,11 +20,13 @@ public class AuthHandler : IMessageHandler<AuthMessage>
         GameWorldService gameWorld,
         DatabaseService database,
         TerrainService terrain,
+        NPCService npcService,
         ILogger<AuthHandler> logger)
     {
         _gameWorld = gameWorld;
         _database = database;
         _terrain = terrain;
+        _npcService = npcService;
         _logger = logger;
         _tokenHandler = new JwtSecurityTokenHandler();
     }
@@ -253,19 +256,31 @@ public class AuthHandler : IMessageHandler<AuthMessage>
         
         // Send spawn message
         await client.SendMessageAsync(spawnMessage);
-        
-        // Send visible players if any
-        if (newlyVisible.Any())
+
+
+        var visibleNpcIds = _npcService?.GetVisibleNPCs(client.Player) ?? new HashSet<int>();
+        var visibleNPCsData = _npcService?.GetNPCSnapshots(visibleNpcIds);
+
+        // Send state update with visible players and NPCs
+        if (newlyVisible.Any() || (visibleNPCsData != null && visibleNPCsData.Any()))
         {
             var visiblePlayersData = _gameWorld.GetFullPlayerData(newlyVisible);
-            await client.SendMessageAsync(new
+            
+            // Update player's visible NPCs tracking
+            client.Player.VisibleNPCs = visibleNpcIds;
+
+            var stateMessage = new StateMessage
             {
-                type = "state",
-                selfStateUpdate = (object?)null,
-                players = (object?)null,
-                clientsToLoad = visiblePlayersData,
-                clientsToUnload = (object?)null
-            });
+                SelfStateUpdate = null,
+                Players = null,
+                Npcs = null,
+                ClientsToLoad = visiblePlayersData?.Any() == true ? visiblePlayersData : null,
+                ClientsToUnload = null,
+                NpcsToLoad = visibleNPCsData?.Any() == true ? visibleNPCsData : null,
+                NpcsToUnload = null
+            };
+            
+            await client.SendMessageAsync(stateMessage);
         }
     }
     
