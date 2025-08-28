@@ -489,6 +489,19 @@ public class NPCService
     // MOVEMENT PHASE - handles target acquisition and movement only
     public async Task ProcessNPCMovement(NPC npc)
     {
+        // Check if current target is still valid (connected)
+        if (npc.TargetPlayer != null)
+        {
+            var targetStillConnected = _gameWorld.GetAuthenticatedClients()
+                .Any(c => c.Player?.UserId == npc.TargetPlayer.UserId);
+            
+            if (!targetStillConnected)
+            {
+                npc.SetTarget(null);
+                _logger.LogInformation($"NPC {npc.Id} lost target (player disconnected), returning to idle");
+            }
+        }
+        
         // Check for target acquisition if idle
         if (npc.AIState == NPCAIState.Idle)
         {
@@ -541,8 +554,11 @@ public class NPCService
                         return;
                     }
                     
-                    // Move toward target
-                    UpdateNPCPosition(npc, greedyStep.Value.x, greedyStep.Value.y);
+                    // Only update position if we actually moved
+                    if (greedyStep.Value.x != npc.X || greedyStep.Value.y != npc.Y)
+                    {
+                        UpdateNPCPosition(npc, greedyStep.Value.x, greedyStep.Value.y);
+                    }
                 }
             }
             // If adjacent, don't move (combat will be handled in combat phase)
