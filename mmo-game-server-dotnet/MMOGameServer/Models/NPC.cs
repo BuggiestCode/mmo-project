@@ -16,7 +16,7 @@ public class NPC : Character
     public override bool IsDirty { get; set; }
     
     // NPC-specific properties
-    public override int AttackCooldown => 0; // 4 ticks between attacks (2 seconds at 500ms tick rate)
+    public override int AttackCooldown => 4; // 4 ticks between attacks (2 seconds at 500ms tick rate)
     public float AggroRange { get; set; } = 5.0f; // 5 tiles aggro range
     
     // Roaming behavior

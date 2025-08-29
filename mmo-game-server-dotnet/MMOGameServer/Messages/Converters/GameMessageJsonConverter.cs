@@ -32,6 +32,7 @@ public class GameMessageJsonConverter : JsonConverter<IGameMessage>
             "enable_heartbeat" => Deserialize<EnableHeartbeatMessage>(root.GetRawText(), options),
             "disable_heartbeat" => Deserialize<DisableHeartbeatMessage>(root.GetRawText(), options),
             "admincommand" => Deserialize<AdminCommandMessage>(root.GetRawText(), options),
+            "settarget" => Deserialize<SetTargetMessage>(root.GetRawText(), options),
             _ => throw new JsonException($"Unknown message type: {typeString}")
         };
     }

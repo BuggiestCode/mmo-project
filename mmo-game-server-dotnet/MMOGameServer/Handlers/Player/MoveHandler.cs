@@ -20,6 +20,13 @@ public class MoveHandler : IMessageHandler<MoveMessage>
     {
         if (client.Player == null) return;
         
+        // Clear any combat target when player manually moves
+        if (client.Player.TargetCharacter != null)
+        {
+            client.Player.SetTarget(null);
+            _logger.LogInformation($"Player {client.Player.UserId} cleared target due to manual movement");
+        }
+        
         var startPos = client.Player.GetPathfindingStartPosition();
         _logger.LogInformation($"Player {client.Player.UserId} requesting move from ({startPos.x}, {startPos.y}) to ({message.DestinationX}, {message.DestinationY})");
         
