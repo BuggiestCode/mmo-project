@@ -228,17 +228,13 @@ public class NPCService
                     if (greedyStep.Value.x != npc.X || greedyStep.Value.y != npc.Y)
                     {
                         // We stepped this tick, we are moving.
-                        npc.SetIsMoving(true);
                         UpdateNPCPosition(npc, greedyStep.Value.x, greedyStep.Value.y);
                     }
                 }
             }
             else
             {
-                // Adjacent to target - not moving, clear any movement flag from previous tick
-                // This ensures NPCs standing still next to their target don't animate
-                // NPC is adjacent - ensure movement flag is cleared
-                npc.SetIsMoving(false);
+
             }
         }
         else
@@ -276,7 +272,7 @@ public class NPCService
         
         await Task.CompletedTask;
     }
-    
+
     private async Task ProcessIdleMovement(NPC npc)
     {
         // Get next move from current path

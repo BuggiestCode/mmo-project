@@ -102,7 +102,7 @@ public class PlayerService
     private async Task ProcessPathMovement(Player player)
     {
         var nextMove = player.GetNextMove();
-        
+
         if (nextMove.HasValue)
         {
             // Validate the move is still valid

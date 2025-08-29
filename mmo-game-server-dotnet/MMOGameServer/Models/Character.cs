@@ -87,23 +87,25 @@ public abstract class Character
     /// </summary>
     public (float x, float y)? GetNextMove()
     {
-        if (!_isMoving || _currentPath.Count == 0)
+        // No more moves
+        if (_currentPath.Count == 0)
         {
-            // No more moves - clear movement state for next tick
-            if (_isMoving && _currentPath.Count == 0 && !_nextTile.HasValue)
-            {
-                _isMoving = false;
-            }
             return null;
         }
         
         _nextTile = _currentPath[0];
         _currentPath.RemoveAt(0);
+
+        // Stop 1 short of final path
+        if (_currentPath.Count == 0)
+        {
+            SetIsMoving(false);
+        }
         
         // Keep _isMoving true even if this is the last move
         // It will be cleared on the NEXT call when we return null
-        
-        IsDirty = true;
+
+            IsDirty = true;
         return _nextTile;
     }
     
@@ -176,13 +178,14 @@ public abstract class Character
     {
         return _nextTile ?? (X, Y);
     }
-    
+
     /// <summary>
-    /// Clears movement state at end of tick for greedy movement
+    /// Set the movement state and set dirty to send
     /// </summary>
     public void SetIsMoving(bool _isMoving)
     {
         this._isMoving = _isMoving;
+        IsDirty = true;
     }
     
     // === COMBAT METHODS ===
