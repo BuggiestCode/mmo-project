@@ -876,6 +876,14 @@ public class NPCService
         return _allNpcs.Values;
     }
     
+    /// <summary>
+    /// Get an NPC by ID
+    /// </summary>
+    public NPC? GetNPC(int npcId)
+    {
+        return _allNpcs.TryGetValue(npcId, out var npc) ? npc : null;
+    }
+    
     public void AuditOrphanedNPCs()
     {
         var orphanedNpcs = new List<NPC>();

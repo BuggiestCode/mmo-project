@@ -66,8 +66,30 @@ public class PlayerService
         if (!_combatService.IsAdjacentCardinal(player.X, player.Y, 
             player.TargetCharacter.X, player.TargetCharacter.Y))
         {
-            // Only recalculate path if we don't have one or target moved significantly
-            if (!player.HasActivePath())
+            // Recalculate path if:
+            // 1. We don't have an active path
+            // 2. Target has moved (check if our path endpoint doesn't match target position)
+            bool needNewPath = !player.HasActivePath();
+            
+            if (!needNewPath && player.HasActivePath())
+            {
+                // Check if target moved - our path might be invalid
+                var currentPath = player.GetCurrentPath();
+                if (currentPath != null && currentPath.Count > 0)
+                {
+                    var pathDestination = currentPath[currentPath.Count - 1];
+                    // If path destination doesn't lead to adjacent tile of target, recalculate
+                    if (!_combatService.IsAdjacentCardinal(pathDestination.x, pathDestination.y,
+                        player.TargetCharacter.X, player.TargetCharacter.Y))
+                    {
+                        needNewPath = true;
+                        player.ClearPath();
+                        _logger.LogDebug($"Player {player.UserId} target moved, recalculating path");
+                    }
+                }
+            }
+            
+            if (needNewPath)
             {
                 var startPos = player.GetPathfindingStartPosition();
                 var path = await _pathfindingService.FindPathAsync(
@@ -83,6 +105,11 @@ public class PlayerService
                         path.RemoveAt(path.Count - 1);
                     }
                     player.SetPath(path);
+                }
+                else
+                {
+                    // No path available - target might be blocked
+                    _logger.LogDebug($"Player {player.UserId} cannot path to target");
                 }
             }
         }

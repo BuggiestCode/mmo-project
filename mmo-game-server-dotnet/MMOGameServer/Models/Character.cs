@@ -172,6 +172,14 @@ public abstract class Character
     }
     
     /// <summary>
+    /// Get the current path (for validation purposes)
+    /// </summary>
+    public List<(float x, float y)>? GetCurrentPath()
+    {
+        return _currentPath.Count > 0 ? new List<(float x, float y)>(_currentPath) : null;
+    }
+    
+    /// <summary>
     /// Gets the starting position for pathfinding (considers pending moves)
     /// </summary>
     public (float x, float y) GetPathfindingStartPosition()

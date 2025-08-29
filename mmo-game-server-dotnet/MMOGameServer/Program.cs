@@ -38,6 +38,7 @@ builder.Services.AddScoped<IMessageHandler<QuitMessage>, LogoutHandler>();
 builder.Services.AddScoped<IMessageHandler<MoveMessage>, MoveHandler>();
 builder.Services.AddScoped<IMessageHandler<CompleteCharacterCreationMessage>, CharacterCreationHandler>();
 builder.Services.AddScoped<IMessageHandler<SaveCharacterLookAttributesMessage>, CharacterAttributesHandler>();
+builder.Services.AddScoped<IMessageHandler<SetTargetMessage>, SetTargetHandler>();
 
 // Communication handlers
 builder.Services.AddScoped<IMessageHandler<ChatMessage>, ChatHandler>();

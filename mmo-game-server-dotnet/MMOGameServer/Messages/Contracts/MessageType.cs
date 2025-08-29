@@ -12,5 +12,6 @@ public enum MessageType
     SaveCharacterLookAttributes,
     EnableHeartbeat,
     DisableHeartbeat,
-    AdminCommand
+    AdminCommand,
+    SetTarget
 }
