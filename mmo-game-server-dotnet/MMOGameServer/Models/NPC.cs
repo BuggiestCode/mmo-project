@@ -1,10 +1,6 @@
 namespace MMOGameServer.Models;
 
-public enum NPCAIState
-{
-    Idle,
-    InCombat
-}
+// NPCAIState removed - using CombatState from Character base class
 
 public class NPC : Character
 {
@@ -19,15 +15,9 @@ public class NPC : Character
     public override float Y { get; set; }
     public override bool IsDirty { get; set; }
     
-    // Combat properties
-    public NPCAIState AIState { get; set; } = NPCAIState.Idle;
-    public Player? TargetPlayer { get; set; }
+    // NPC-specific properties
     public override int AttackCooldown => 0; // 4 ticks between attacks (2 seconds at 500ms tick rate)
     public float AggroRange { get; set; } = 5.0f; // 5 tiles aggro range
-    
-    // Pathfinding
-    private List<(float x, float y)> _currentPath = new();
-    private (float x, float y)? _nextTile;
     
     // Roaming behavior
     public DateTime? NextRoamTime { get; set; }
@@ -41,89 +31,20 @@ public class NPC : Character
         X = x;
         Y = y;
         IsDirty = true;
-        _isMoving = false; // Initialize inherited field
     }
     
-    public void SetPath(List<(float x, float y)>? path)
+    // Override SetTarget to reset roam timer when leaving combat
+    public override void SetTarget(Character? target)
     {
-        if (path == null || path.Count == 0)
+        base.SetTarget(target);
+        if (target == null)
         {
-            ClearPath();
-            return;
+            NextRoamTime = null; // Reset roam timer when returning to idle
         }
-        
-        _currentPath = new List<(float x, float y)>(path);
-        _isMoving = true;
     }
-    
-    public (float x, float y)? GetNextMove()
-    {
-        if (!_isMoving || _currentPath.Count == 0)
-        {
-            return null;
-        }
-        
-        _nextTile = _currentPath[0];
-        _currentPath.RemoveAt(0);
-        
-        if (_currentPath.Count == 0)
-        {
-            ClearMovementState();
-        }
-        
-        IsDirty = true;
-        return _nextTile;
-    }
-    
-    public override void UpdatePosition(float x, float y)
-    {
-        base.UpdatePosition(x, y);
-    }
-    
-    public void ClearPath()
-    {
-        _currentPath.Clear();
-        _nextTile = null;
-        ClearMovementState();
-    }
-    
-    public (float x, float y) GetPathfindingStartPosition()
-    {
-        return _nextTile ?? (X, Y);
-    }
-    
-    public bool HasActivePath()
-    {
-        return _isMoving && (_currentPath.Count > 0 || _nextTile.HasValue);
-    }
-    
-    
-    public (float x, float y)? GetQueuedMove()
-    {
-        // Returns the next queued move without consuming it
-        if (_isMoving && _currentPath.Count > 0)
-        {
-            return _currentPath[0];
-        }
-        return _nextTile;
-    }
-    
-    public void SetTarget(Player? target)
-    {
-        TargetPlayer = target;
-        if (target != null)
-        {
-            AIState = NPCAIState.InCombat;
-            ClearPath(); // Clear any roaming path when entering combat
-        }
-        else
-        {
-            AIState = NPCAIState.Idle;
-            AttackCooldownRemaining = 0; // Reset cooldown when leaving combat
-        }
-        IsDirty = true;
-    }
-    
+
+    // This needs refactoring into a /Model/Snapshot along with the Player snapshot and I need to make an NPC initial payload to pass the 'type' of npc (terrible name, conflicts with message type).
+    // For now just hard coded, front end agnostically takes it and just misses the type field (still serializes from json with extra fields that just get discarded in some cases)
     public object GetSnapshot()
     {
         return new
@@ -133,7 +54,9 @@ public class NPC : Character
             x = X,
             y = Y,
             isMoving = IsMoving,
-            inCombat = AIState == NPCAIState.InCombat,
+            inCombat = CombatState == CombatState.InCombat,
+            currentTargetId = CurrentTargetId ?? -1,  // -1 for no target (frontend convention)
+            isTargetPlayer = CurrentTargetId.HasValue ? IsTargetPlayer : false,  // Default to false when no target
             damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null
         };
     }

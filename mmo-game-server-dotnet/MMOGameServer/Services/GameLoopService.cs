@@ -266,7 +266,7 @@ public class GameLoopService : BackgroundService
         // Clear combat service tick data
         _combatService?.ClearTickData();
         
-        // Clear damage tracking for all characters
+        // Clear damage tracking and single-step movement for all characters
         foreach (var client in clients)
         {
             client.Player?.EndTick();

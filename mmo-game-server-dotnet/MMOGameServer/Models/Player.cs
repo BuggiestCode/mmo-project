@@ -27,9 +27,6 @@ public class Player : Character
     public string? CurrentChunk { get; set; }
     public HashSet<string> VisibilityChunks { get; set; } = new();
     public HashSet<int> VisibleNPCs { get; set; } = new();
-    
-    private List<(float x, float y)> _currentPath = new();
-    private (float x, float y)? _nextTile;
 
     public Player(int userId, float x = 0, float y = 0)
     {
@@ -39,81 +36,22 @@ public class Player : Character
         Facing = 0;
         IsDirty = false;
         DoNetworkHeartbeat = false;
-        _isMoving = false; // Initialize inherited field
     }
     
-    public void SetPath(List<(float x, float y)>? path)
+    // Override to add logging
+    public new void SetPath(List<(float x, float y)>? path)
     {
-        if (path == null || path.Count == 0)
+        base.SetPath(path);
+        if (path != null && path.Count > 0)
         {
-            ClearPath();
-            return;
+            Console.WriteLine($"Player {UserId} set new path with {path.Count} steps");
         }
-        
-        _currentPath = new List<(float x, float y)>(path);
-        _isMoving = true;
-        Console.WriteLine($"Player {UserId} set new path with {path.Count} steps");
     }
     
-    public (float x, float y)? GetNextMove()
+    public new void ClearPath()
     {
-        if (!_isMoving || _currentPath.Count == 0)
-        {
-            return null;
-        }
-        
-        _nextTile = _currentPath[0];
-        _currentPath.RemoveAt(0);
-        
-        if (_currentPath.Count == 0)
-        {
-            ClearMovementState();
-        }
-        
-        IsDirty = true;
-
-        //Console.WriteLine($"Player {UserId} next move: ({_nextTile.Value.x}, {_nextTile.Value.y}), {_currentPath.Count} steps remaining");
-
-        return _nextTile;
-    }
-    
-    public override void UpdatePosition(float x, float y)
-    {
-        base.UpdatePosition(x, y);
-    }
-    
-    public void ClearPath()
-    {
-        _currentPath.Clear();
-        _nextTile = null;
-        ClearMovementState();
+        base.ClearPath();
         Console.WriteLine($"Player {UserId} path cleared");
-    }
-    
-    public (float x, float y) GetPathfindingStartPosition()
-    {
-        if (_nextTile.HasValue)
-        {
-            return _nextTile.Value;
-        }
-        
-        return (X, Y);
-    }
-    
-    public bool HasActivePath()
-    {
-        return _isMoving && (_currentPath.Count > 0 || _nextTile.HasValue);
-    }
-    
-    
-    public (float x, float y)? GetQueuedMove()
-    {
-        // Returns the next queued move without consuming it
-        if (_isMoving && _currentPath.Count > 0)
-        {
-            return _currentPath[0];
-        }
-        return _nextTile;
     }
     
     public object GetSnapshot()
@@ -124,6 +62,8 @@ public class Player : Character
             x = X,
             y = Y,
             isMoving = IsMoving,
+            currentTargetId = CurrentTargetId ?? -1,  // -1 for no target (frontend convention)
+            isTargetPlayer = CurrentTargetId.HasValue ? IsTargetPlayer : false,  // Default to false when no target
             damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null
         };
         

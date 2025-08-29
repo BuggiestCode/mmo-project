@@ -486,24 +486,30 @@ public class NPCService
         npc.UpdatePosition(newX, newY);
     }
     
+    
     // MOVEMENT PHASE - handles target acquisition and movement only
     public async Task ProcessNPCMovement(NPC npc)
     {
         // Check if current target is still valid (connected)
-        if (npc.TargetPlayer != null)
+        if (npc.TargetCharacter != null)
         {
-            var targetStillConnected = _gameWorld.GetAuthenticatedClients()
-                .Any(c => c.Player?.UserId == npc.TargetPlayer.UserId);
-            
-            if (!targetStillConnected)
+            // For now, only check if it's a player that disconnected
+            if (npc.TargetCharacter is Player targetPlayer)
             {
-                npc.SetTarget(null);
-                _logger.LogInformation($"NPC {npc.Id} lost target (player disconnected), returning to idle");
+                var targetStillConnected = _gameWorld.GetAuthenticatedClients()
+                    .Any(c => c.Player?.UserId == targetPlayer.UserId);
+                
+                if (!targetStillConnected)
+                {
+                    npc.SetTarget(null);
+                    _logger.LogInformation($"NPC {npc.Id} lost target (player disconnected), returning to idle");
+                }
             }
+            // In future, add NPC target validation here
         }
         
         // Check for target acquisition if idle
-        if (npc.AIState == NPCAIState.Idle)
+        if (npc.CombatState == CombatState.Idle)
         {
             var authenticatedClients = _gameWorld.GetAuthenticatedClients();
             foreach (var client in authenticatedClients)
@@ -524,10 +530,10 @@ public class NPCService
         }
         
         // Handle movement based on state
-        if (npc.AIState == NPCAIState.InCombat && npc.TargetPlayer != null)
+        if (npc.CombatState == CombatState.InCombat && npc.TargetCharacter != null)
         {
             // Check if target is still valid
-            if (!npc.TargetPlayer.IsAlive)
+            if (!npc.TargetCharacter.IsAlive)
             {
                 npc.SetTarget(null);
                 _logger.LogInformation($"NPC {npc.Id} lost target (dead), returning to idle");
@@ -535,8 +541,8 @@ public class NPCService
                 return;
             }
             
-            var targetX = npc.TargetPlayer.X;
-            var targetY = npc.TargetPlayer.Y;
+            var targetX = npc.TargetCharacter.X;
+            var targetY = npc.TargetCharacter.Y;
             
             // If not adjacent, take greedy step toward target
             if (!_combatService.IsAdjacentCardinal(npc.X, npc.Y, targetX, targetY))
@@ -554,14 +560,20 @@ public class NPCService
                         return;
                     }
                     
-                    // Only update position if we actually moved
+                    // Only update position if we actually moved (single-step combat movement)
                     if (greedyStep.Value.x != npc.X || greedyStep.Value.y != npc.Y)
                     {
                         UpdateNPCPosition(npc, greedyStep.Value.x, greedyStep.Value.y);
                     }
                 }
             }
-            // If adjacent, don't move (combat will be handled in combat phase)
+            else
+            {
+                // Adjacent to target - not moving, clear any movement flag from previous tick
+                // This ensures NPCs standing still next to their target don't animate
+                // NPC is adjacent - ensure movement flag is cleared
+                npc.EndMovementTick();
+            }
         }
         else
         {
@@ -577,17 +589,22 @@ public class NPCService
         _combatService.UpdateCooldown(npc);
         
         // Only process combat if in combat state with valid target
-        if (npc.AIState != NPCAIState.InCombat || npc.TargetPlayer == null) //  || !npc.TargetPlayer.IsAlive Removing alive checks until the end of tick (we allow for cross killing in this game)
+        if (npc.CombatState != CombatState.InCombat || npc.TargetCharacter == null) //  || !npc.TargetCharacter.IsAlive Removing alive checks until the end of tick (we allow for cross killing in this game)
         {
             return;
         }
         
         // Check if adjacent and can attack
-        if (_combatService.IsAdjacentCardinal(npc.X, npc.Y, npc.TargetPlayer.X, npc.TargetPlayer.Y))
+        if (_combatService.IsAdjacentCardinal(npc.X, npc.Y, npc.TargetCharacter.X, npc.TargetCharacter.Y))
         {
             if (npc.AttackCooldownRemaining == 0)
             {
-                _combatService.ExecuteAttack(npc, npc.TargetPlayer);
+                // For now, only support attacking players
+                if (npc.TargetCharacter is Player targetPlayer)
+                {
+                    _combatService.ExecuteAttack(npc, targetPlayer);
+                }
+                // In future, add NPC vs NPC combat here
             }
         }
         

@@ -1,8 +1,11 @@
 {
   "permissions": {
+    "defaultMode": "acceptEdits",
     "additionalDirectories": [
       "C:\\Users\\JackS\\Documents\\MMO"
     ],
-    "defaultMode": "acceptEdits"
+    "allow": [
+      "Bash(dotnet build)"
+    ]
   }
 }
