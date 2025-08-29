@@ -13,6 +13,7 @@ public class GameLoopService : BackgroundService
     private readonly TerrainService _terrainService;
     private readonly DatabaseService _databaseService;
     private readonly NPCService? _npcService;
+    private readonly PlayerService? _playerService;
     private readonly CombatService? _combatService;
     private readonly ILogger<GameLoopService> _logger;
     private readonly int _tickRate = 500; // 500ms tick rate matching JavaScript
@@ -25,12 +26,14 @@ public class GameLoopService : BackgroundService
         DatabaseService databaseService,
         ILogger<GameLoopService> logger,
         NPCService? npcService = null,
+        PlayerService? playerService = null,
         CombatService? combatService = null)
     {
         _gameWorld = gameWorld;
         _terrainService = terrainService;
         _databaseService = databaseService;
         _npcService = npcService;
+        _playerService = playerService;
         _combatService = combatService;
         _logger = logger;
         
@@ -86,29 +89,11 @@ public class GameLoopService : BackgroundService
         // === MOVEMENT PHASE ===
         
         // Phase 1: Calculate and apply all player movements
-        var playerMovementTasks = new List<Task<(ConnectedClient client, (float x, float y)? nextMove)>>();
-        foreach (var client in clients)
+        if (_playerService != null)
         {
-            if (client.Player != null)
-            {
-                playerMovementTasks.Add(ProcessPlayerMovementAsync(client));
-            }
-        }
-        
-        // Wait for all player movement calculations
-        var playerMovementResults = await Task.WhenAll(playerMovementTasks);
-        
-        // Apply player movement results
-        foreach (var (client, nextMove) in playerMovementResults)
-        {
-            if (nextMove.HasValue)
-            {
-                // Update chunk tracking and visibility
-                _terrainService.UpdatePlayerChunk(client.Player!, nextMove.Value.x, nextMove.Value.y);
-                
-                // Update player position
-                client.Player!.UpdatePosition(nextMove.Value.x, nextMove.Value.y);
-            }
+            var activePlayers = _playerService.GetActivePlayers();
+            var playerMovementTasks = activePlayers.Select(player => _playerService.ProcessPlayerMovement(player));
+            await Task.WhenAll(playerMovementTasks);
         }
         
         // Phase 2: Calculate and apply all NPC movements
@@ -133,12 +118,11 @@ public class GameLoopService : BackgroundService
         // === COMBAT PHASE ===
 
         // Phase 3: Process player combat actions
-        foreach (var client in clients)
+        if (_playerService != null)
         {
-            if (client.Player != null)
-            {
-                await ProcessPlayerCombat(client);
-            }
+            var activePlayers = _playerService.GetActivePlayers();
+            var playerCombatTasks = activePlayers.Select(player => _playerService.ProcessPlayerCombat(player));
+            await Task.WhenAll(playerCombatTasks);
         }
         
         // Phase 4: Process NPC combat actions
@@ -281,29 +265,6 @@ public class GameLoopService : BackgroundService
         }
     }
 
-    private async Task<(ConnectedClient client, (float x, float y)? nextMove)> ProcessPlayerMovementAsync(ConnectedClient client)
-    {
-        return await Task.Run(() =>
-        {
-            if (client.Player == null) return (client, null);
-            
-            // Just process movement path
-            var nextMove = client.Player.GetNextMove();
-            
-            return (client, nextMove);
-        });
-    }
-    
-    private async Task ProcessPlayerCombat(ConnectedClient client)
-    {
-        await Task.Run(() =>
-        {
-            if (client.Player == null) return;  //  || !client.Player.IsAlive Removing alive checks until the end of tick (we allow for cross killing in this game)
-            
-            // TODO: Implement player combat when player can target NPCs
-            // For now, players don't initiate combat
-        });
-    }
 
     private async Task SendHeartbeatTicksAsync(List<ConnectedClient> clients)
     {

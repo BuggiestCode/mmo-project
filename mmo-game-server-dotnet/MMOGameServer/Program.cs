@@ -22,6 +22,7 @@ builder.Services.AddSingleton<TerrainService>();
 builder.Services.AddSingleton<PathfindingService>();
 builder.Services.AddSingleton<CombatService>();
 builder.Services.AddSingleton<NPCService>();
+builder.Services.AddSingleton<PlayerService>();
 
 // Register message processing services
 builder.Services.AddSingleton<MessageRouter>();
