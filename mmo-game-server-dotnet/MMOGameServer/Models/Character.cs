@@ -180,13 +180,9 @@ public abstract class Character
     /// <summary>
     /// Clears movement state at end of tick for greedy movement
     /// </summary>
-    public void EndMovementTick()
+    public void SetIsMoving(bool _isMoving)
     {
-        // Only clear if we're doing greedy movement (no path)
-        if (!HasActivePath())
-        {
-            _isMoving = false;
-        }
+        this._isMoving = _isMoving;
     }
     
     // === COMBAT METHODS ===

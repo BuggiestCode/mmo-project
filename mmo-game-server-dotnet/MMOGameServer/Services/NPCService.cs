@@ -36,41 +36,408 @@ public class NPCService
         _cooldownTimer = new Timer(ProcessZoneCooldowns, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
     
+    /// <summary>
+    /// Spawns a single NPC in the specified zone at a random walkable position
+    /// </summary>
+    /// <param name="zone">The zone to spawn the NPC in</param>
+    /// <returns>The spawned NPC, or null if no walkable spawn point was found</returns>
+    private NPC? SpawnNPC(NPCZone zone)
+    {
+        // Safety check: Don't spawn if we've already hit the max
+        if (zone.NPCs.Count >= zone.MaxNPCCount)
+        {
+            _logger.LogWarning($"Zone {zone.Id} already has {zone.NPCs.Count}/{zone.MaxNPCCount} NPCs, skipping spawn");
+            return null;
+        }
+        
+        float x = 0, y = 0;
+        bool foundWalkableSpawn = false;
+        
+        // Try up to configured max times to find a walkable spawn point
+        for (int attempt = 0; attempt < _maxSpawnRetries; attempt++)
+        {
+            (x, y) = zone.GetRandomSpawnPoint(_random);
+            if (_terrainService.ValidateMovement(x, y))
+            {
+                foundWalkableSpawn = true;
+                break;
+            }
+        }
+        
+        if (!foundWalkableSpawn)
+        {
+            _logger.LogWarning($"Failed to find walkable spawn point for NPC in zone {zone.Id} after {_maxSpawnRetries} attempts. Zone bounds: ({zone.MinX:F2},{zone.MinY:F2}) to ({zone.MaxX:F2},{zone.MaxY:F2})");
+            return null;
+        }
+        
+        var npc = new NPC(zone.Id, zone, zone.NPCType, x, y);
+        zone.NPCs.Add(npc);
+        _allNpcs[npc.Id] = npc;
+        
+        // Update chunk tracking
+        var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(x, y);
+        var chunkKey = $"{chunkX},{chunkY}";
+        if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+        {
+            chunk.NPCsOnChunk.Add(npc.Id);
+        }
+        
+        _logger.LogInformation($"Spawned NPC {npc.Id} of type '{zone.NPCType}' at ({x:F2},{y:F2})");
+        return npc;
+    }
+
+    private void SpawnNPCsInZone(NPCZone zone)
+    {
+        var zoneKey = BuildZoneKey(zone.RootChunkX, zone.RootChunkY, zone.Id);
+        
+        // Clean up any existing NPCs in this zone first
+        if (zone.NPCs.Count > 0)
+        {
+            _logger.LogWarning($"Zone {zoneKey} already has {zone.NPCs.Count} NPCs before spawning, cleaning them up first");
+        }
+        
+        foreach (var existingNpc in zone.NPCs.ToList())
+        {
+            _allNpcs.TryRemove(existingNpc.Id, out _);
+            
+            // Remove from chunk tracking
+            var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(existingNpc.X, existingNpc.Y);
+            var chunkKey = $"{chunkX},{chunkY}";
+            if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+            {
+                chunk.NPCsOnChunk.Remove(existingNpc.Id);
+            }
+        }
+        
+        zone.NPCs.Clear();
+        zone.RespawnTimers.Clear();
+        
+        int spawnedCount = 0;
+        for (int i = 0; i < zone.MaxNPCCount; i++)
+        {
+            var npc = SpawnNPC(zone);
+            if (npc != null)
+            {
+                spawnedCount++;
+            }
+        }
+        
+        _logger.LogInformation($"Spawned {spawnedCount}/{zone.MaxNPCCount} NPCs in zone {zone.Id}");
+    }
+    
+    public void UpdateNPCPosition(NPC npc, float newX, float newY)
+    {
+        var (oldChunkX, oldChunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
+        var (newChunkX, newChunkY) = _terrainService.WorldPositionToChunkCoord(newX, newY);
+        
+        var oldChunkKey = $"{oldChunkX},{oldChunkY}";
+        var newChunkKey = $"{newChunkX},{newChunkY}";
+        
+        // Update chunk tracking if NPC moved to different chunk
+        if (oldChunkKey != newChunkKey)
+        {
+            if (_terrainService.TryGetChunk(oldChunkKey, out var oldChunk))
+            {
+                oldChunk.NPCsOnChunk.Remove(npc.Id);
+            }
+            
+            if (_terrainService.TryGetChunk(newChunkKey, out var newChunk))
+            {
+                newChunk.NPCsOnChunk.Add(npc.Id);
+            }
+        }
+
+        npc.UpdatePosition(newX, newY);
+    }
+    
+    
+    // MOVEMENT PHASE - handles target acquisition and movement only
+    public async Task ProcessNPCMovement(NPC npc)
+    {
+        // Check if current target is still valid (connected)
+        if (npc.TargetCharacter != null)
+        {
+            // For now, only check if it's a player that disconnected
+            if (npc.TargetCharacter is Player targetPlayer)
+            {
+                var targetStillConnected = _gameWorld.GetAuthenticatedClients()
+                    .Any(c => c.Player?.UserId == targetPlayer.UserId);
+                
+                if (!targetStillConnected)
+                {
+                    npc.SetTarget(null);
+                    _logger.LogInformation($"NPC {npc.Id} lost target (player disconnected), returning to idle");
+                }
+            }
+            // In future, add NPC target validation here
+        }
+        
+        // Check for target acquisition if idle
+        if (npc.CombatState == CombatState.Idle)
+        {
+            var authenticatedClients = _gameWorld.GetAuthenticatedClients();
+            foreach (var client in authenticatedClients)
+            {
+                if (client.Player != null && client.Player.IsAlive && 
+                    _combatService.IsWithinRange(npc.X, npc.Y, client.Player.X, client.Player.Y, npc.AggroRange))
+                {
+                    // Check if player is within the NPC's zone - only aggro if they are
+                    if (npc.Zone.ContainsPoint(client.Player.X, client.Player.Y))
+                    {
+                        // Acquire target
+                        npc.SetTarget(client.Player);
+                        _logger.LogInformation($"NPC {npc.Id} acquired target player {client.Player.UserId}");
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Handle movement based on state
+        if (npc.CombatState == CombatState.InCombat && npc.TargetCharacter != null)
+        {
+            // Check if target is still valid
+            if (!npc.TargetCharacter.IsAlive)
+            {
+                npc.SetTarget(null);
+                _logger.LogInformation($"NPC {npc.Id} lost target (dead), returning to idle");
+                await ProcessIdleMovement(npc);
+                return;
+            }
+            
+            var targetX = npc.TargetCharacter.X;
+            var targetY = npc.TargetCharacter.Y;
+            
+            // If not adjacent, take greedy step toward target
+            if (!_combatService.IsAdjacentCardinal(npc.X, npc.Y, targetX, targetY))
+            {
+                var greedyStep = _combatService.GetGreedyStep(npc.X, npc.Y, targetX, targetY);
+                if (greedyStep.HasValue)
+                {
+                    // Check if move would take us out of zone
+                    if (!npc.Zone.ContainsPoint(greedyStep.Value.x, greedyStep.Value.y))
+                    {
+                        // Would leave zone, return to idle
+                        npc.SetTarget(null);
+                        _logger.LogInformation($"NPC {npc.Id} cannot pursue target out of zone, returning to idle");
+                        await ProcessIdleMovement(npc);
+                        return;
+                    }
+                    
+                    // Only update position if we actually moved (single-step combat movement)
+                    if (greedyStep.Value.x != npc.X || greedyStep.Value.y != npc.Y)
+                    {
+                        // We stepped this tick, we are moving.
+                        npc.SetIsMoving(true);
+                        UpdateNPCPosition(npc, greedyStep.Value.x, greedyStep.Value.y);
+                    }
+                }
+            }
+            else
+            {
+                // Adjacent to target - not moving, clear any movement flag from previous tick
+                // This ensures NPCs standing still next to their target don't animate
+                // NPC is adjacent - ensure movement flag is cleared
+                npc.SetIsMoving(false);
+            }
+        }
+        else
+        {
+            // Idle movement
+            await ProcessIdleMovement(npc);
+        }
+    }
+    
+    // COMBAT PHASE - handles attacks only, board state is finalized
+    public async Task ProcessNPCCombat(NPC npc)
+    {
+        // Update cooldown
+        _combatService.UpdateCooldown(npc);
+        
+        // Only process combat if in combat state with valid target
+        if (npc.CombatState != CombatState.InCombat || npc.TargetCharacter == null) //  || !npc.TargetCharacter.IsAlive Removing alive checks until the end of tick (we allow for cross killing in this game)
+        {
+            return;
+        }
+        
+        // Check if adjacent and can attack
+        if (_combatService.IsAdjacentCardinal(npc.X, npc.Y, npc.TargetCharacter.X, npc.TargetCharacter.Y))
+        {
+            if (npc.AttackCooldownRemaining == 0)
+            {
+                // For now, only support attacking players
+                if (npc.TargetCharacter is Player targetPlayer)
+                {
+                    _combatService.ExecuteAttack(npc, targetPlayer);
+                }
+                // In future, add NPC vs NPC combat here
+            }
+        }
+        
+        await Task.CompletedTask;
+    }
+    
+    private async Task ProcessIdleMovement(NPC npc)
+    {
+        // Get next move from current path
+        var nextMove = npc.GetNextMove();
+        if (nextMove.HasValue)
+        {
+            UpdateNPCPosition(npc, nextMove.Value.x, nextMove.Value.y);
+        }
+        else if (!npc.HasActivePath())
+        {
+            // Generate random roam if enough time has passed
+            var now = DateTime.UtcNow;
+            if (!npc.NextRoamTime.HasValue || now >= npc.NextRoamTime)
+            {
+                await GenerateRandomRoamPath(npc, npc.Zone);
+                npc.NextRoamTime = now.AddSeconds(3 + _random.Next(5)); // 3-8 seconds between roams
+            }
+        }
+    }
+    
+    
+    private async Task GenerateRandomRoamPath(NPC npc, NPCZone zone)
+    {
+        // Check if current position is walkable first
+        if (!_terrainService.ValidateMovement(npc.X, npc.Y))
+        {
+            _logger.LogError($"NPC {npc.Id} current position ({npc.X:F2},{npc.Y:F2}) is not walkable! Despawning and respawning...");
+            DespawnAndRespawnNPC(npc, zone);
+            return;
+        }
+        
+        // Try multiple times to find a walkable target position
+        for (int attempt = 0; attempt < _maxRoamRetries; attempt++)
+        {
+            // Generate random target position within zone bounds
+            var targetX = zone.MinX + (float)(_random.NextDouble() * (zone.MaxX - zone.MinX));
+            var targetY = zone.MinY + (float)(_random.NextDouble() * (zone.MaxY - zone.MinY));
+            
+            // Validate target position is walkable before attempting pathfinding
+            if (!_terrainService.ValidateMovement(targetX, targetY))
+            {
+                _logger.LogDebug($"NPC {npc.Id} roam target ({targetX:F2},{targetY:F2}) not walkable, retrying...");
+                continue;
+            }
+            
+            // Pathfind to validated target
+            var path = await _pathfindingService.FindPathAsync(npc.X, npc.Y, targetX, targetY);
+            if (path != null && path.Count() > 0)
+            {
+                npc.SetPath(path);
+                _logger.LogDebug($"NPC {npc.Id} roaming to ({targetX:F2},{targetY:F2})");
+                return;
+            }
+        }
+        
+        // No valid roam target found - just stand still this tick and try again next time
+        _logger.LogDebug($"NPC {npc.Id} couldn't find valid roam target after {_maxRoamRetries} attempts, standing still this tick");
+    }
+    
+    private void DespawnAndRespawnNPC(NPC npc, NPCZone zone)
+    {
+        // Remove NPC from tracking
+        zone.NPCs.Remove(npc);
+        _allNpcs.TryRemove(npc.Id, out _);
+        
+        // Remove from chunk tracking
+        var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
+        var chunkKey = $"{chunkX},{chunkY}";
+        if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+        {
+            chunk.NPCsOnChunk.Remove(npc.Id);
+        }
+        
+        _logger.LogInformation($"Despawned NPC {npc.Id} from invalid position ({npc.X:F2},{npc.Y:F2})");
+        
+        // Try to respawn using the helper method
+        var newNpc = SpawnNPC(zone);
+        if (newNpc != null)
+        {
+            _logger.LogInformation($"Respawned NPC {newNpc.Id} at position ({newNpc.X:F2},{newNpc.Y:F2})");
+        }
+        else
+        {
+            _logger.LogError($"Failed to respawn NPC after despawning from invalid position - no walkable spawn found in zone {zone.Id}");
+        }
+    }
+    
+    public HashSet<int> GetVisibleNPCs(Player player)
+    {
+        var visibleNpcs = new HashSet<int>();
+        
+        foreach (var chunkKey in player.VisibilityChunks)
+        {
+            if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+            {
+                if (chunk.NPCsOnChunk.Count > 0)
+                {
+                    _logger.LogDebug($"Player {player.UserId} can see {chunk.NPCsOnChunk.Count} NPCs on chunk {chunkKey}: [{string.Join(", ", chunk.NPCsOnChunk)}]");
+                }
+                visibleNpcs.UnionWith(chunk.NPCsOnChunk);
+            }
+        }
+        
+        if (visibleNpcs.Count > 0)
+        {
+            _logger.LogInformation($"Player {player.UserId} has {visibleNpcs.Count} visible NPCs: [{string.Join(", ", visibleNpcs)}]");
+        }
+        
+        return visibleNpcs;
+    }
+    
+    public List<object> GetNPCSnapshots(IEnumerable<int> npcIds)
+    {
+        var snapshots = new List<object>();
+        
+        foreach (var npcId in npcIds)
+        {
+            if (_allNpcs.TryGetValue(npcId, out var npc))
+            {
+                snapshots.Add(npc.GetSnapshot());
+            }
+        }
+        
+        return snapshots;
+    }
+    
     public void LoadZoneFromChunk(JsonElement zoneData, int chunkX, int chunkY)
     {
         try
         {
             var zoneId = zoneData.GetProperty("id").GetInt32();
-            
+
             // Create compound unique identifier: "ChunkX_ChunkY_ZoneId"
             var uniqueZoneKey = $"{chunkX}_{chunkY}_{zoneId}";
-            
+
             // Check if zone already loaded from another chunk
             if (_zones.ContainsKey(uniqueZoneKey))
             {
                 _logger.LogWarning($"Zone {uniqueZoneKey} already loaded with {_zones[uniqueZoneKey].NPCs.Count} NPCs, skipping duplicate load from chunk ({chunkX},{chunkY})");
                 return;
             }
-            
+
             var minX = zoneData.GetProperty("minX").GetSingle();
             var minY = zoneData.GetProperty("minY").GetSingle();
             var maxX = zoneData.GetProperty("maxX").GetSingle();
             var maxY = zoneData.GetProperty("maxY").GetSingle();
             var npcType = zoneData.GetProperty("npcType").GetString() ?? "default";
             var maxNpcCount = zoneData.GetProperty("maxCount").GetInt32();
-            
+
             var zone = new NPCZone(zoneId, minX, minY, maxX, maxY, npcType, maxNpcCount)
             {
                 RootChunkX = chunkX,
                 RootChunkY = chunkY,
                 IsHot = false  // Will be set to Hot when activated via SetZoneHot
             };
-            
+
             _zones[uniqueZoneKey] = zone;
-            
+
             // Spawn NPCs immediately when zone is created
             SpawnNPCsInZone(zone);
-            
+
             _logger.LogInformation($"Loaded NPC zone {uniqueZoneKey} (type: {npcType}) from chunk ({chunkX},{chunkY}), spawned {zone.NPCs.Count} NPCs");
         }
         catch (Exception ex)
@@ -370,371 +737,6 @@ public class NPCService
         }
         
         _logger.LogInformation($"Zone {uniqueZoneKey} destroyed (transitioned to Cold), cleaned up {zone.NPCs.Count} NPCs");
-    }
-    
-    /// <summary>
-    /// Spawns a single NPC in the specified zone at a random walkable position
-    /// </summary>
-    /// <param name="zone">The zone to spawn the NPC in</param>
-    /// <returns>The spawned NPC, or null if no walkable spawn point was found</returns>
-    private NPC? SpawnNPC(NPCZone zone)
-    {
-        // Safety check: Don't spawn if we've already hit the max
-        if (zone.NPCs.Count >= zone.MaxNPCCount)
-        {
-            _logger.LogWarning($"Zone {zone.Id} already has {zone.NPCs.Count}/{zone.MaxNPCCount} NPCs, skipping spawn");
-            return null;
-        }
-        
-        float x = 0, y = 0;
-        bool foundWalkableSpawn = false;
-        
-        // Try up to configured max times to find a walkable spawn point
-        for (int attempt = 0; attempt < _maxSpawnRetries; attempt++)
-        {
-            (x, y) = zone.GetRandomSpawnPoint(_random);
-            if (_terrainService.ValidateMovement(x, y))
-            {
-                foundWalkableSpawn = true;
-                break;
-            }
-        }
-        
-        if (!foundWalkableSpawn)
-        {
-            _logger.LogWarning($"Failed to find walkable spawn point for NPC in zone {zone.Id} after {_maxSpawnRetries} attempts. Zone bounds: ({zone.MinX:F2},{zone.MinY:F2}) to ({zone.MaxX:F2},{zone.MaxY:F2})");
-            return null;
-        }
-        
-        var npc = new NPC(zone.Id, zone, zone.NPCType, x, y);
-        zone.NPCs.Add(npc);
-        _allNpcs[npc.Id] = npc;
-        
-        // Update chunk tracking
-        var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(x, y);
-        var chunkKey = $"{chunkX},{chunkY}";
-        if (_terrainService.TryGetChunk(chunkKey, out var chunk))
-        {
-            chunk.NPCsOnChunk.Add(npc.Id);
-        }
-        
-        _logger.LogInformation($"Spawned NPC {npc.Id} of type '{zone.NPCType}' at ({x:F2},{y:F2})");
-        return npc;
-    }
-
-    private void SpawnNPCsInZone(NPCZone zone)
-    {
-        var zoneKey = BuildZoneKey(zone.RootChunkX, zone.RootChunkY, zone.Id);
-        
-        // Clean up any existing NPCs in this zone first
-        if (zone.NPCs.Count > 0)
-        {
-            _logger.LogWarning($"Zone {zoneKey} already has {zone.NPCs.Count} NPCs before spawning, cleaning them up first");
-        }
-        
-        foreach (var existingNpc in zone.NPCs.ToList())
-        {
-            _allNpcs.TryRemove(existingNpc.Id, out _);
-            
-            // Remove from chunk tracking
-            var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(existingNpc.X, existingNpc.Y);
-            var chunkKey = $"{chunkX},{chunkY}";
-            if (_terrainService.TryGetChunk(chunkKey, out var chunk))
-            {
-                chunk.NPCsOnChunk.Remove(existingNpc.Id);
-            }
-        }
-        
-        zone.NPCs.Clear();
-        zone.RespawnTimers.Clear();
-        
-        int spawnedCount = 0;
-        for (int i = 0; i < zone.MaxNPCCount; i++)
-        {
-            var npc = SpawnNPC(zone);
-            if (npc != null)
-            {
-                spawnedCount++;
-            }
-        }
-        
-        _logger.LogInformation($"Spawned {spawnedCount}/{zone.MaxNPCCount} NPCs in zone {zone.Id}");
-    }
-    
-    public void UpdateNPCPosition(NPC npc, float newX, float newY)
-    {
-        var (oldChunkX, oldChunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
-        var (newChunkX, newChunkY) = _terrainService.WorldPositionToChunkCoord(newX, newY);
-        
-        var oldChunkKey = $"{oldChunkX},{oldChunkY}";
-        var newChunkKey = $"{newChunkX},{newChunkY}";
-        
-        // Update chunk tracking if NPC moved to different chunk
-        if (oldChunkKey != newChunkKey)
-        {
-            if (_terrainService.TryGetChunk(oldChunkKey, out var oldChunk))
-            {
-                oldChunk.NPCsOnChunk.Remove(npc.Id);
-            }
-            
-            if (_terrainService.TryGetChunk(newChunkKey, out var newChunk))
-            {
-                newChunk.NPCsOnChunk.Add(npc.Id);
-            }
-        }
-        
-        npc.UpdatePosition(newX, newY);
-    }
-    
-    
-    // MOVEMENT PHASE - handles target acquisition and movement only
-    public async Task ProcessNPCMovement(NPC npc)
-    {
-        // Check if current target is still valid (connected)
-        if (npc.TargetCharacter != null)
-        {
-            // For now, only check if it's a player that disconnected
-            if (npc.TargetCharacter is Player targetPlayer)
-            {
-                var targetStillConnected = _gameWorld.GetAuthenticatedClients()
-                    .Any(c => c.Player?.UserId == targetPlayer.UserId);
-                
-                if (!targetStillConnected)
-                {
-                    npc.SetTarget(null);
-                    _logger.LogInformation($"NPC {npc.Id} lost target (player disconnected), returning to idle");
-                }
-            }
-            // In future, add NPC target validation here
-        }
-        
-        // Check for target acquisition if idle
-        if (npc.CombatState == CombatState.Idle)
-        {
-            var authenticatedClients = _gameWorld.GetAuthenticatedClients();
-            foreach (var client in authenticatedClients)
-            {
-                if (client.Player != null && client.Player.IsAlive && 
-                    _combatService.IsWithinRange(npc.X, npc.Y, client.Player.X, client.Player.Y, npc.AggroRange))
-                {
-                    // Check if player is within the NPC's zone - only aggro if they are
-                    if (npc.Zone.ContainsPoint(client.Player.X, client.Player.Y))
-                    {
-                        // Acquire target
-                        npc.SetTarget(client.Player);
-                        _logger.LogInformation($"NPC {npc.Id} acquired target player {client.Player.UserId}");
-                        break;
-                    }
-                }
-            }
-        }
-        
-        // Handle movement based on state
-        if (npc.CombatState == CombatState.InCombat && npc.TargetCharacter != null)
-        {
-            // Check if target is still valid
-            if (!npc.TargetCharacter.IsAlive)
-            {
-                npc.SetTarget(null);
-                _logger.LogInformation($"NPC {npc.Id} lost target (dead), returning to idle");
-                await ProcessIdleMovement(npc);
-                return;
-            }
-            
-            var targetX = npc.TargetCharacter.X;
-            var targetY = npc.TargetCharacter.Y;
-            
-            // If not adjacent, take greedy step toward target
-            if (!_combatService.IsAdjacentCardinal(npc.X, npc.Y, targetX, targetY))
-            {
-                var greedyStep = _combatService.GetGreedyStep(npc.X, npc.Y, targetX, targetY);
-                if (greedyStep.HasValue)
-                {
-                    // Check if move would take us out of zone
-                    if (!npc.Zone.ContainsPoint(greedyStep.Value.x, greedyStep.Value.y))
-                    {
-                        // Would leave zone, return to idle
-                        npc.SetTarget(null);
-                        _logger.LogInformation($"NPC {npc.Id} cannot pursue target out of zone, returning to idle");
-                        await ProcessIdleMovement(npc);
-                        return;
-                    }
-                    
-                    // Only update position if we actually moved (single-step combat movement)
-                    if (greedyStep.Value.x != npc.X || greedyStep.Value.y != npc.Y)
-                    {
-                        UpdateNPCPosition(npc, greedyStep.Value.x, greedyStep.Value.y);
-                    }
-                }
-            }
-            else
-            {
-                // Adjacent to target - not moving, clear any movement flag from previous tick
-                // This ensures NPCs standing still next to their target don't animate
-                // NPC is adjacent - ensure movement flag is cleared
-                npc.EndMovementTick();
-            }
-        }
-        else
-        {
-            // Idle movement
-            await ProcessIdleMovement(npc);
-        }
-    }
-    
-    // COMBAT PHASE - handles attacks only, board state is finalized
-    public async Task ProcessNPCCombat(NPC npc)
-    {
-        // Update cooldown
-        _combatService.UpdateCooldown(npc);
-        
-        // Only process combat if in combat state with valid target
-        if (npc.CombatState != CombatState.InCombat || npc.TargetCharacter == null) //  || !npc.TargetCharacter.IsAlive Removing alive checks until the end of tick (we allow for cross killing in this game)
-        {
-            return;
-        }
-        
-        // Check if adjacent and can attack
-        if (_combatService.IsAdjacentCardinal(npc.X, npc.Y, npc.TargetCharacter.X, npc.TargetCharacter.Y))
-        {
-            if (npc.AttackCooldownRemaining == 0)
-            {
-                // For now, only support attacking players
-                if (npc.TargetCharacter is Player targetPlayer)
-                {
-                    _combatService.ExecuteAttack(npc, targetPlayer);
-                }
-                // In future, add NPC vs NPC combat here
-            }
-        }
-        
-        await Task.CompletedTask;
-    }
-    
-    private async Task ProcessIdleMovement(NPC npc)
-    {
-        // Get next move from current path
-        var nextMove = npc.GetNextMove();
-        if (nextMove.HasValue)
-        {
-            UpdateNPCPosition(npc, nextMove.Value.x, nextMove.Value.y);
-        }
-        else if (!npc.HasActivePath())
-        {
-            // Generate random roam if enough time has passed
-            var now = DateTime.UtcNow;
-            if (!npc.NextRoamTime.HasValue || now >= npc.NextRoamTime)
-            {
-                await GenerateRandomRoamPath(npc, npc.Zone);
-                npc.NextRoamTime = now.AddSeconds(3 + _random.Next(5)); // 3-8 seconds between roams
-            }
-        }
-    }
-    
-    
-    private async Task GenerateRandomRoamPath(NPC npc, NPCZone zone)
-    {
-        // Check if current position is walkable first
-        if (!_terrainService.ValidateMovement(npc.X, npc.Y))
-        {
-            _logger.LogError($"NPC {npc.Id} current position ({npc.X:F2},{npc.Y:F2}) is not walkable! Despawning and respawning...");
-            DespawnAndRespawnNPC(npc, zone);
-            return;
-        }
-        
-        // Try multiple times to find a walkable target position
-        for (int attempt = 0; attempt < _maxRoamRetries; attempt++)
-        {
-            // Generate random target position within zone bounds
-            var targetX = zone.MinX + (float)(_random.NextDouble() * (zone.MaxX - zone.MinX));
-            var targetY = zone.MinY + (float)(_random.NextDouble() * (zone.MaxY - zone.MinY));
-            
-            // Validate target position is walkable before attempting pathfinding
-            if (!_terrainService.ValidateMovement(targetX, targetY))
-            {
-                _logger.LogDebug($"NPC {npc.Id} roam target ({targetX:F2},{targetY:F2}) not walkable, retrying...");
-                continue;
-            }
-            
-            // Pathfind to validated target
-            var path = await _pathfindingService.FindPathAsync(npc.X, npc.Y, targetX, targetY);
-            if (path != null && path.Count() > 0)
-            {
-                npc.SetPath(path);
-                _logger.LogDebug($"NPC {npc.Id} roaming to ({targetX:F2},{targetY:F2})");
-                return;
-            }
-        }
-        
-        // No valid roam target found - just stand still this tick and try again next time
-        _logger.LogDebug($"NPC {npc.Id} couldn't find valid roam target after {_maxRoamRetries} attempts, standing still this tick");
-    }
-    
-    private void DespawnAndRespawnNPC(NPC npc, NPCZone zone)
-    {
-        // Remove NPC from tracking
-        zone.NPCs.Remove(npc);
-        _allNpcs.TryRemove(npc.Id, out _);
-        
-        // Remove from chunk tracking
-        var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
-        var chunkKey = $"{chunkX},{chunkY}";
-        if (_terrainService.TryGetChunk(chunkKey, out var chunk))
-        {
-            chunk.NPCsOnChunk.Remove(npc.Id);
-        }
-        
-        _logger.LogInformation($"Despawned NPC {npc.Id} from invalid position ({npc.X:F2},{npc.Y:F2})");
-        
-        // Try to respawn using the helper method
-        var newNpc = SpawnNPC(zone);
-        if (newNpc != null)
-        {
-            _logger.LogInformation($"Respawned NPC {newNpc.Id} at position ({newNpc.X:F2},{newNpc.Y:F2})");
-        }
-        else
-        {
-            _logger.LogError($"Failed to respawn NPC after despawning from invalid position - no walkable spawn found in zone {zone.Id}");
-        }
-    }
-    
-    public HashSet<int> GetVisibleNPCs(Player player)
-    {
-        var visibleNpcs = new HashSet<int>();
-        
-        foreach (var chunkKey in player.VisibilityChunks)
-        {
-            if (_terrainService.TryGetChunk(chunkKey, out var chunk))
-            {
-                if (chunk.NPCsOnChunk.Count > 0)
-                {
-                    _logger.LogDebug($"Player {player.UserId} can see {chunk.NPCsOnChunk.Count} NPCs on chunk {chunkKey}: [{string.Join(", ", chunk.NPCsOnChunk)}]");
-                }
-                visibleNpcs.UnionWith(chunk.NPCsOnChunk);
-            }
-        }
-        
-        if (visibleNpcs.Count > 0)
-        {
-            _logger.LogInformation($"Player {player.UserId} has {visibleNpcs.Count} visible NPCs: [{string.Join(", ", visibleNpcs)}]");
-        }
-        
-        return visibleNpcs;
-    }
-    
-    public List<object> GetNPCSnapshots(IEnumerable<int> npcIds)
-    {
-        var snapshots = new List<object>();
-        
-        foreach (var npcId in npcIds)
-        {
-            if (_allNpcs.TryGetValue(npcId, out var npc))
-            {
-                snapshots.Add(npc.GetSnapshot());
-            }
-        }
-        
-        return snapshots;
     }
     
     public void HandleChunksEnteredVisibility(IEnumerable<string> newlyVisibleChunks)
