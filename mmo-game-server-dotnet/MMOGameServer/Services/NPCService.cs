@@ -154,8 +154,10 @@ public class NPCService
     // MOVEMENT PHASE - handles target acquisition and movement only
     public async Task ProcessNPCMovement(NPC npc)
     {
-        // Check if current target is still valid (connected)
-        if (npc.TargetCharacter != null)
+        try
+        {
+            // Check if current target is still valid (connected)
+            if (npc.TargetCharacter != null)
         {
             // For now, only check if it's a player that disconnected
             if (npc.TargetCharacter is Player targetPlayer)
@@ -238,13 +240,21 @@ public class NPCService
             // Idle movement
             await ProcessIdleMovement(npc);
         }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error processing movement for NPC {npc?.Id ?? -1}. Skipping this tick.");
+            // Don't crash - just skip this NPC's movement for this tick
+        }
     }
     
     // COMBAT PHASE - handles attacks only, board state is finalized
     public async Task ProcessNPCCombat(NPC npc)
     {
-        // Update cooldown
-        _combatService.UpdateCooldown(npc);
+        try
+        {
+            // Update cooldown
+            _combatService.UpdateCooldown(npc);
         
         // Only process combat if in combat state with valid target
         if (npc.CombatState != CombatState.InCombat || npc.TargetCharacter == null) //  || !npc.TargetCharacter.IsAlive Removing alive checks until the end of tick (we allow for cross killing in this game)
@@ -267,6 +277,12 @@ public class NPCService
         }
         
         await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error processing combat for NPC {npc?.Id ?? -1}. Skipping this tick.");
+            // Don't crash - just skip this NPC's combat for this tick
+        }
     }
     
     /// <summary>
@@ -274,7 +290,9 @@ public class NPCService
     /// </summary>
     public void HandleNPCDeath(NPC npc)
     {
-        _logger.LogInformation($"NPC {npc.Id} (type: {npc.Type}) has died at ({npc.X:F2}, {npc.Y:F2})");
+        try
+        {
+            _logger.LogInformation($"NPC {npc.Id} (type: {npc.Type}) has died at ({npc.X:F2}, {npc.Y:F2})");
         
         // Clear target relationships
         npc.OnRemove();
@@ -300,6 +318,16 @@ public class NPCService
             var respawnTime = DateTime.UtcNow.AddSeconds(zone.NPCRespawnTimeSeconds);
             zone.RespawnTimers[npc.Id] = respawnTime;
             _logger.LogInformation($"NPC {npc.Id} scheduled to respawn in {zone.NPCRespawnTimeSeconds} seconds");
+        }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error handling death for NPC {npc?.Id ?? -1}. NPC may not respawn properly.");
+            // Try to at least remove the NPC from tracking to prevent further errors
+            if (npc != null)
+            {
+                _allNpcs.TryRemove(npc.Id, out _);
+            }
         }
     }
     
@@ -435,11 +463,6 @@ public class NPCService
             }
         }
         
-        if (visibleNpcs.Count > 0)
-        {
-            _logger.LogInformation($"Player {player.UserId} has {visibleNpcs.Count} visible NPCs: [{string.Join(", ", visibleNpcs)}]");
-        }
-        
         return visibleNpcs;
     }
     
@@ -452,6 +475,10 @@ public class NPCService
             if (_allNpcs.TryGetValue(npcId, out var npc))
             {
                 snapshots.Add(npc.GetSnapshot());
+            }
+            else
+            {
+                _logger.LogWarning($"GetNPCSnapshots: NPC {npcId} not found in _allNpcs. It may have been removed.");
             }
         }
         

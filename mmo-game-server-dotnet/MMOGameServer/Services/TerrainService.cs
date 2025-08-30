@@ -114,11 +114,17 @@ public class TerrainService
         if (!string.IsNullOrEmpty(oldChunkKey) && _chunks.TryGetValue(oldChunkKey, out var oldChunk))
         {
             oldChunk.PlayersOnChunk.Remove(player.UserId);
+            _logger.LogInformation($"Removed player {player.UserId} from chunk {oldChunkKey}. Players remaining: [{string.Join(", ", oldChunk.PlayersOnChunk)}]");
         }
         
         if (_chunks.TryGetValue(newChunkKey, out var newChunk))
         {
             newChunk.PlayersOnChunk.Add(player.UserId);
+            _logger.LogInformation($"Added player {player.UserId} to chunk {newChunkKey}. Players now on chunk: [{string.Join(", ", newChunk.PlayersOnChunk)}]");
+        }
+        else
+        {
+            _logger.LogWarning($"Could not add player {player.UserId} to chunk {newChunkKey} - chunk not loaded!");
         }
         
         player.CurrentChunk = newChunkKey;
@@ -249,8 +255,22 @@ public class TerrainService
         {
             if (_chunks.TryGetValue(chunkKey, out var chunk))
             {
-                visiblePlayers.UnionWith(chunk.PlayersOnChunk.Where(p => p != player.UserId));
+                var playersInChunk = chunk.PlayersOnChunk.Where(p => p != player.UserId).ToList();
+                if (playersInChunk.Any())
+                {
+                    _logger.LogDebug($"Player {player.UserId} can see players in chunk {chunkKey}: [{string.Join(", ", playersInChunk)}]");
+                }
+                visiblePlayers.UnionWith(playersInChunk);
             }
+            else
+            {
+                _logger.LogDebug($"Player {player.UserId} has visibility chunk {chunkKey} but chunk is not loaded!");
+            }
+        }
+        
+        if (!visiblePlayers.Any() && player.VisibilityChunks.Any())
+        {
+            _logger.LogDebug($"Player {player.UserId} has visibility chunks [{string.Join(", ", player.VisibilityChunks)}] but sees no other players");
         }
         
         return visiblePlayers;

@@ -181,11 +181,11 @@ public class GameLoopService : BackgroundService
             // DEBUG: Log NPC visibility changes
             if (newlyVisibleNpcs.Any())
             {
-                _logger.LogDebug($"Player {playerId} newly visible NPCs: [{string.Join(", ", newlyVisibleNpcs)}]");
+                _logger.LogInformation($"Player {playerId} newly visible NPCs: [{string.Join(", ", newlyVisibleNpcs)}]");
             }
             if (noLongerVisibleNpcs.Any())
             {
-                _logger.LogDebug($"Player {playerId} no longer visible NPCs: [{string.Join(", ", noLongerVisibleNpcs)}]");
+                _logger.LogInformation($"Player {playerId} no longer visible NPCs: [{string.Join(", ", noLongerVisibleNpcs)}]");
             }
             
             client.Player.VisibleNPCs = visibleNpcIds;
@@ -213,14 +213,24 @@ public class GameLoopService : BackgroundService
             if (selfUpdate != null || visiblePlayerSnapshots.Any() || visibleNpcSnapshots.Any() || 
                 hasVisibilityChanges || newlyVisibleNpcs.Any() || noLongerVisibleNpcs.Any())
             {
+                // Get the full player data for newly visible players
+                List<object>? clientsToLoad = null;
+                if (hasVisibilityChanges && changes.newlyVisible.Any())
+                {
+                    var playerData = _gameWorld.GetFullPlayerData(changes.newlyVisible);
+                    // Only set if we actually found players (not empty list)
+                    if (playerData.Any())
+                    {
+                        clientsToLoad = playerData;
+                    }
+                }
+                
                 var personalizedUpdate = new StateMessage
                 {
                     SelfStateUpdate = selfUpdate,
                     Players = visiblePlayerSnapshots.Any() ? visiblePlayerSnapshots : null,
                     Npcs = visibleNpcSnapshots.Any() ? visibleNpcSnapshots : null,
-                    ClientsToLoad = hasVisibilityChanges && changes.newlyVisible.Any() 
-                        ? _gameWorld.GetFullPlayerData(changes.newlyVisible) 
-                        : null,
+                    ClientsToLoad = clientsToLoad,
                     ClientsToUnload = hasVisibilityChanges && changes.noLongerVisible.Any() 
                         ? changes.noLongerVisible.ToArray()
                         : null,

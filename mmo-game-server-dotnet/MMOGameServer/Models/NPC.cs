@@ -5,6 +5,7 @@ namespace MMOGameServer.Models;
 public class NPC : Character
 {
     private static int _nextNpcId = 1;
+    private const int MaxNpcId = 100000; // Wrap at 100k to prevent overflow
     
     private int _id;
     public override int Id => _id;
@@ -25,6 +26,10 @@ public class NPC : Character
     public NPC(int zoneId, NPCZone zone, string type, float x, float y)
     {
         _id = _nextNpcId++;
+        if (_nextNpcId > MaxNpcId)
+        {
+            _nextNpcId = 1; // Wrap back to 1 (not 0, to avoid confusion with "no target")
+        }
         ZoneId = zoneId;
         Zone = zone;
         Type = type;
