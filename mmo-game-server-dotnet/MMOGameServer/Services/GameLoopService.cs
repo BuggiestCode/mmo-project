@@ -85,10 +85,18 @@ public class GameLoopService : BackgroundService
     {
         var clients = _gameWorld.GetAuthenticatedClients().ToList();
         if (!clients.Any() && _npcService == null) return;
-        
+
         // === MOVEMENT PHASE ===
         
-        // Phase 1: Calculate and apply all NPC movements
+        // Phase 1: Calculate and apply all player movements
+        if (_playerService != null)
+        {
+            var activePlayers = _playerService.GetActivePlayers();
+            var playerMovementTasks = activePlayers.Select(player => _playerService.ProcessPlayerMovement(player));
+            await Task.WhenAll(playerMovementTasks);
+        }
+        
+        // Phase 2: Calculate and apply all NPC movements
         List<NPC>? activeNpcs = null;
         if (_npcService != null)
         {
@@ -104,15 +112,6 @@ public class GameLoopService : BackgroundService
                 await Task.WhenAll(npcMovementTasks);
             }
         }
-        
-        // Phase 2: Calculate and apply all player movements
-        if (_playerService != null)
-        {
-            var activePlayers = _playerService.GetActivePlayers();
-            var playerMovementTasks = activePlayers.Select(player => _playerService.ProcessPlayerMovement(player));
-            await Task.WhenAll(playerMovementTasks);
-        }
-        
 
         // === BOARD STATE IS NOW FINALIZED ===
 

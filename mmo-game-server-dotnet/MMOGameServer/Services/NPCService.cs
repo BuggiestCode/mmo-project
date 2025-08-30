@@ -232,10 +232,6 @@ public class NPCService
                     }
                 }
             }
-            else
-            {
-
-            }
         }
         else
         {
@@ -285,6 +281,7 @@ public class NPCService
         {
             // Generate random roam if enough time has passed
             var now = DateTime.UtcNow;
+
             if (!npc.NextRoamTime.HasValue || now >= npc.NextRoamTime)
             {
                 await GenerateRandomRoamPath(npc, npc.Zone);

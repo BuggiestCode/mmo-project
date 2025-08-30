@@ -261,11 +261,11 @@
     ],
     "zones": [
         {
-            "id": 1,
-            "minX": -34,
+            "id": 3,
+            "minX": -35,
             "minY": -7,
-            "maxX": -29,
-            "maxY": 3,
+            "maxX": -28,
+            "maxY": 2,
             "npcType": "goblin",
             "maxCount": 1
         }

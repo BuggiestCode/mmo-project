@@ -90,6 +90,7 @@ public abstract class Character
         // No more moves
         if (_currentPath.Count == 0)
         {
+            _nextTile = null;  // Clear the last tile so HasActivePath() returns false
             return null;
         }
         
