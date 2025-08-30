@@ -178,7 +178,7 @@ public class CombatService
         }
 
         // Calculate damage (can be expanded with attack/strength skills later)
-        var damage = 0;// CalculateDamage(attacker, target);
+        var damage = CalculateDamage(attacker, target);
         target.TakeDamage(damage);
         
         // Record attack for visualization and centralized tracking

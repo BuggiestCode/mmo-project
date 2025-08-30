@@ -9,8 +9,8 @@ public class Player : Character
     public int Facing { get; set; }
     public override bool IsDirty { get; set; }
     public bool DoNetworkHeartbeat { get; set; }
-    
-    public bool CharacterCreatorCompleted{ get; set; }
+
+    public bool CharacterCreatorCompleted { get; set; }
 
     // Player look attributes
     public int HairColSwatchIndex { get; set; }
@@ -36,11 +36,11 @@ public class Player : Character
         Facing = 0;
         IsDirty = false;
         DoNetworkHeartbeat = false;
-        
+
         // Initialize skills
         InitializeSkill(SkillType.Health, 10); // Start with 10 HP
     }
-    
+
     // Override to add logging
     public new void SetPath(List<(float x, float y)>? path)
     {
@@ -50,13 +50,13 @@ public class Player : Character
             Console.WriteLine($"Player {UserId} set new path with {path.Count} steps");
         }
     }
-    
+
     public new void ClearPath()
     {
         base.ClearPath();
         Console.WriteLine($"Player {UserId} path cleared");
     }
-    
+
     public object GetSnapshot()
     {
         var snapshot = new
@@ -72,7 +72,29 @@ public class Player : Character
             maxHealth = MaxHealth,
             tookDamage = DamageTakenThisTick.Any()
         };
-        
+
         return snapshot;
+    }
+
+    public override void OnDeath()
+    {
+        Console.WriteLine($"Player {UserId} has died! Respawning at (0,0)");
+        
+        // Clear combat state and paths (base class handles target cleanup)
+        base.OnDeath();
+        
+        // Clear any active movement
+        ClearPath();
+        
+        // Restore health to full
+        RestoreHealth();
+        
+        // Teleport to spawn point (0,0)
+        UpdatePosition(0, 0);
+        
+        // Force dirty flag for immediate update
+        IsDirty = true;
+        
+        Console.WriteLine($"Player {UserId} respawned with {CurrentHealth}/{MaxHealth} health at ({X:F2}, {Y:F2})");
     }
 }

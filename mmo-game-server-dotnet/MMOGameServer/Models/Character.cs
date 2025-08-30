@@ -66,7 +66,7 @@ public abstract class Character
     /// <summary>
     /// Called when character's health reaches 0
     /// </summary>
-    protected virtual void OnDeath()
+    public virtual void OnDeath()
     {
         // Clear target and notify attackers
         OnRemove();

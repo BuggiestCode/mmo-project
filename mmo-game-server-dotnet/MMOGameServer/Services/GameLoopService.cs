@@ -250,10 +250,23 @@ public class GameLoopService : BackgroundService
         // Clear combat service tick data
         _combatService?.ClearTickData();
         
-        // Clear damage tracking and single-step movement for all characters
+        // Clear damage tracking for all characters
+        // Also check for player deaths and handle respawning
         foreach (var client in clients)
         {
-            client.Player?.EndTick();
+            if (client.Player != null)
+            {
+                client.Player.EndTick();
+                
+                // Check if player died this tick and handle respawn
+                if (!client.Player.IsAlive)
+                {
+                    client.Player.OnDeath();
+                    
+                    // Player position changed significantly, trigger chunk update
+                    _terrainService.UpdatePlayerChunk(client.Player, client.Player.X, client.Player.Y);
+                }
+            }
         }
         
         // Process NPC cleanup and death checks
