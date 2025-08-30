@@ -13,6 +13,14 @@ public abstract class Character
     public abstract float Y { get; set; }
     public abstract bool IsDirty { get; set; }
     
+    // === SKILLS SYSTEM ===
+    protected Dictionary<SkillType, Skill> Skills { get; set; } = new();
+    
+    // Quick accessors for common skills
+    public Skill? HealthSkill => Skills.GetValueOrDefault(SkillType.Health);
+    public int CurrentHealth => HealthSkill?.CurrentValue ?? 0;
+    public int MaxHealth => HealthSkill?.BaseLevel ?? 0;
+    
     // === MOVEMENT STATE ===
     protected List<(float x, float y)> _currentPath = new();
     protected (float x, float y)? _nextTile;
@@ -29,7 +37,7 @@ public abstract class Character
     public bool IsTargetPlayer { get; protected set; }
     
     // Combat properties
-    public bool IsAlive { get; set; } = true;
+    public bool IsAlive => CurrentHealth > 0;
     public int AttackCooldownRemaining { get; set; }
     public abstract int AttackCooldown { get; }
     
@@ -42,8 +50,26 @@ public abstract class Character
         DamageTakenThisTick.Add(amount);
         IsDirty = true;
         
-        // Placeholder for future health system
-        // TODO: Implement actual health/death when health system is added
+        // Apply damage to health skill
+        if (HealthSkill != null)
+        {
+            var actualDamage = HealthSkill.Modify(-amount);
+            
+            // Check for death
+            if (CurrentHealth <= 0)
+            {
+                OnDeath();
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Called when character's health reaches 0
+    /// </summary>
+    protected virtual void OnDeath()
+    {
+        // Clear target and notify attackers
+        OnRemove();
     }
     
     public List<int> GetTopDamageThisTick(int maxCount = 4)
@@ -246,5 +272,57 @@ public abstract class Character
             attacker.SetTarget(null);
         }
         TargetedBy.Clear();
+    }
+    
+    // === SKILLS MANAGEMENT ===
+    
+    /// <summary>
+    /// Initializes a skill with a base level
+    /// </summary>
+    protected void InitializeSkill(SkillType type, int baseLevel)
+    {
+        Skills[type] = new Skill(type, baseLevel);
+    }
+    
+    /// <summary>
+    /// Gets a skill by type
+    /// </summary>
+    public Skill? GetSkill(SkillType type)
+    {
+        return Skills.GetValueOrDefault(type);
+    }
+    
+    /// <summary>
+    /// Heals the character by the specified amount
+    /// </summary>
+    public int Heal(int amount)
+    {
+        if (HealthSkill == null) return 0;
+        
+        var actualHeal = HealthSkill.Modify(amount);
+        IsDirty = true;
+        return actualHeal;
+    }
+    
+    /// <summary>
+    /// Fully restores health to base level
+    /// </summary>
+    public void RestoreHealth()
+    {
+        HealthSkill?.Recharge();
+        IsDirty = true;
+    }
+    
+    /// <summary>
+    /// Gets a snapshot of all skills for network sync
+    /// </summary>
+    public Dictionary<string, object> GetSkillsSnapshot()
+    {
+        var snapshot = new Dictionary<string, object>();
+        foreach (var skill in Skills.Values)
+        {
+            snapshot[skill.Type.ToString().ToLower()] = skill.GetSnapshot();
+        }
+        return snapshot;
     }
 }

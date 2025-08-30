@@ -121,7 +121,10 @@ public class GameWorldService
             underColSwatchIndex = client.Player.UnderColSwatchIndex,
             bootsColSwatchIndex = client.Player.BootsColSwatchIndex,
             hairStyleIndex = client.Player.HairStyleIndex,
-            isMale = client.Player.IsMale
+            isMale = client.Player.IsMale,
+            health = client.Player.CurrentHealth,
+            maxHealth = client.Player.MaxHealth,
+            tookDamage = client.Player.DamageTakenThisTick.Any()
         };
     }
     

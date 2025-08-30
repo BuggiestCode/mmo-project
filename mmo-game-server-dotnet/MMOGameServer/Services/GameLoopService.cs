@@ -256,12 +256,30 @@ public class GameLoopService : BackgroundService
             client.Player?.EndTick();
         }
         
+        // Process NPC cleanup and death checks
         if (_npcService != null)
         {
+            var deadNpcs = new List<NPC>();
+            
             foreach (var npc in _npcService.GetAllNPCs())
             {
                 npc.EndTick();
+                
+                // Check if NPC died this tick
+                if (!npc.IsAlive)
+                {
+                    deadNpcs.Add(npc);
+                }
             }
+            
+            // Handle dead NPCs
+            foreach (var deadNpc in deadNpcs)
+            {
+                _npcService.HandleNPCDeath(deadNpc);
+            }
+            
+            // Process any pending respawns
+            _npcService.ProcessRespawns();
         }
     }
 

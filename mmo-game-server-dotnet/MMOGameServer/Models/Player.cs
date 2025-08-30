@@ -36,6 +36,9 @@ public class Player : Character
         Facing = 0;
         IsDirty = false;
         DoNetworkHeartbeat = false;
+        
+        // Initialize skills
+        InitializeSkill(SkillType.Health, 10); // Start with 10 HP
     }
     
     // Override to add logging
@@ -64,7 +67,10 @@ public class Player : Character
             isMoving = IsMoving,
             currentTargetId = CurrentTargetId ?? -1,  // -1 for no target (frontend convention)
             isTargetPlayer = CurrentTargetId.HasValue ? IsTargetPlayer : false,  // Default to false when no target
-            damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null
+            damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null,
+            health = CurrentHealth,
+            maxHealth = MaxHealth,
+            tookDamage = DamageTakenThisTick.Any()
         };
         
         return snapshot;

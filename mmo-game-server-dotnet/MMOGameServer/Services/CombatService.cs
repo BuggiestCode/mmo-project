@@ -176,9 +176,9 @@ public class CombatService
             _logger.LogDebug($"NPC {attacker.Id} attack on cooldown for {attacker.AttackCooldownRemaining} more ticks");
             return false;
         }
-        
-        // Execute attack
-        var damage = 1; // Placeholder damage
+
+        // Calculate damage (can be expanded with attack/strength skills later)
+        var damage = 0;// CalculateDamage(attacker, target);
         target.TakeDamage(damage);
         
         // Record attack for visualization and centralized tracking
@@ -219,8 +219,8 @@ public class CombatService
             return false;
         }
         
-        // Execute attack
-        var damage = 1; // Placeholder damage
+        // Calculate damage (can be expanded with attack/strength skills later)
+        var damage = CalculateDamage(attacker, target);
         target.TakeDamage(damage);
         
         // Record attack for visualization and centralized tracking
@@ -282,5 +282,28 @@ public class CombatService
     public void ClearTickData()
     {
         _currentTickAttacks.Clear();
+    }
+    
+    /// <summary>
+    /// Calculates damage from one character to another.
+    /// Can be expanded to include attack/strength/defence skills.
+    /// </summary>
+    private int CalculateDamage(Character attacker, Character target)
+    {
+        // Base damage calculation
+        //var baseDamage = 1;
+        
+        // Future: Add attack/strength modifiers from attacker
+        // var attackLevel = attacker.GetSkill(SkillType.Attack)?.CurrentValue ?? 1;
+        // var strengthLevel = attacker.GetSkill(SkillType.Strength)?.CurrentValue ?? 1;
+        
+        // Future: Add defence reduction from target
+        // var defenceLevel = target.GetSkill(SkillType.Defence)?.CurrentValue ?? 1;
+        
+        // For now, simple random damage between 0-3
+        var random = new Random();
+        var damage = random.Next(0, 4);
+        
+        return damage;
     }
 }

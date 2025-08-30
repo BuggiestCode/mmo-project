@@ -31,6 +31,26 @@ public class NPC : Character
         X = x;
         Y = y;
         IsDirty = true;
+        
+        // Initialize skills based on NPC type
+        InitializeNPCSkills();
+    }
+    
+    private void InitializeNPCSkills()
+    {
+        // Base health for different NPC types (can be customized per type later)
+        switch (Type)
+        {
+            case "goblin":
+                InitializeSkill(SkillType.Health, 5);
+                break;
+            case "guard":
+                InitializeSkill(SkillType.Health, 20);
+                break;
+            default:
+                InitializeSkill(SkillType.Health, 8); // Default NPC health
+                break;
+        }
     }
     
     // Override SetTarget to reset roam timer when leaving combat
@@ -57,7 +77,10 @@ public class NPC : Character
             inCombat = CombatState == CombatState.InCombat,
             currentTargetId = CurrentTargetId ?? -1,  // -1 for no target (frontend convention)
             isTargetPlayer = CurrentTargetId.HasValue ? IsTargetPlayer : false,  // Default to false when no target
-            damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null
+            damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null,
+            health = CurrentHealth,
+            maxHealth = MaxHealth,
+            tookDamage = DamageTakenThisTick.Any()
         };
     }
 }

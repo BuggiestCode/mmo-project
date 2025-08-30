@@ -17,7 +17,7 @@ public class NPCZone
     // NPC spawn parameters
     public string NPCType { get; set; }
     public int MaxNPCCount { get; set; }
-    public float NPCRespawnTimeSeconds { get; set; } = 60.0f;
+    public float NPCRespawnTimeSeconds { get; set; } = 30.0f;
     
     // Zone state
     public bool IsHot { get; set; }  // true = Hot (visible), false = Warm (cooling down)

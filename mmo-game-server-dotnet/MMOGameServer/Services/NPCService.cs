@@ -268,6 +268,68 @@ public class NPCService
         
         await Task.CompletedTask;
     }
+    
+    /// <summary>
+    /// Handles NPC death, removing it from the world and scheduling respawn
+    /// </summary>
+    public void HandleNPCDeath(NPC npc)
+    {
+        _logger.LogInformation($"NPC {npc.Id} (type: {npc.Type}) has died at ({npc.X:F2}, {npc.Y:F2})");
+        
+        // Clear target relationships
+        npc.OnRemove();
+        
+        // Remove from global tracking
+        _allNpcs.TryRemove(npc.Id, out _);
+        
+        // Remove from chunk tracking
+        var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
+        var chunkKey = $"{chunkX},{chunkY}";
+        if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+        {
+            chunk.NPCsOnChunk.Remove(npc.Id);
+        }
+        
+        // Remove from zone
+        var zone = npc.Zone;
+        zone.NPCs.Remove(npc);
+        
+        // Schedule respawn if zone is still hot
+        if (zone.IsHot)
+        {
+            var respawnTime = DateTime.UtcNow.AddSeconds(zone.NPCRespawnTimeSeconds);
+            zone.RespawnTimers[npc.Id] = respawnTime;
+            _logger.LogInformation($"NPC {npc.Id} scheduled to respawn in {zone.NPCRespawnTimeSeconds} seconds");
+        }
+    }
+    
+    /// <summary>
+    /// Checks for NPCs that need to respawn
+    /// </summary>
+    public void ProcessRespawns()
+    {
+        var now = DateTime.UtcNow;
+        
+        foreach (var zone in _zones.Values.Where(z => z.IsHot))
+        {
+            var toRespawn = zone.RespawnTimers
+                .Where(kvp => kvp.Value <= now)
+                .Select(kvp => kvp.Key)
+                .ToList();
+            
+            foreach (var npcId in toRespawn)
+            {
+                zone.RespawnTimers.Remove(npcId);
+                
+                // Spawn a new NPC
+                var newNpc = SpawnNPC(zone);
+                if (newNpc != null)
+                {
+                    _logger.LogInformation($"Respawned NPC {newNpc.Id} in zone {zone.Id} (replacing NPC {npcId})");
+                }
+            }
+        }
+    }
 
     private async Task ProcessIdleMovement(NPC npc)
     {
