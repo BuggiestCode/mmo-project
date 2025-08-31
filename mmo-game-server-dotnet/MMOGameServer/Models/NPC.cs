@@ -72,7 +72,7 @@ public class NPC : Character
     // For now just hard coded, front end agnostically takes it and just misses the type field (still serializes from json with extra fields that just get discarded in some cases)
     public object GetSnapshot()
     {
-        return new
+        var snapshot = new
         {
             id = Id,
             type = Type,
@@ -85,7 +85,17 @@ public class NPC : Character
             damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null,
             health = CurrentHealth,
             maxHealth = MaxHealth,
-            tookDamage = DamageTakenThisTick.Any()
+            tookDamage = DamageTakenThisTick.Any(),
+            isDead = !IsAlive,  // Include death state for client animation
+            teleportMove = TeleportMove  // Flag for instant position changes
         };
+
+        // Clear teleport flag after including in snapshot
+        if (TeleportMove)
+        {
+            TeleportMove = false;
+        }
+
+        return snapshot;
     }
 }

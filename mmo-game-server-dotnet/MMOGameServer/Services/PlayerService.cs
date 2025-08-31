@@ -225,11 +225,12 @@ public class PlayerService
     
     /// <summary>
     /// Get all players that need movement processing.
+    /// Excludes dead or respawning players.
     /// </summary>
     public List<Player> GetActivePlayers()
     {
         return _gameWorld.GetAuthenticatedClients()
-            .Where(c => c.Player != null)
+            .Where(c => c.Player != null && c.Player.IsAlive && !c.Player.IsAwaitingRespawn)
             .Select(c => c.Player!)
             .ToList();
     }

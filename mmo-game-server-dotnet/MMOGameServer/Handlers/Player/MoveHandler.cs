@@ -20,6 +20,13 @@ public class MoveHandler : IMessageHandler<MoveMessage>
     {
         if (client.Player == null) return;
         
+        // Prevent movement while dead or awaiting respawn
+        if (!client.Player.IsAlive || client.Player.IsAwaitingRespawn)
+        {
+            _logger.LogInformation($"Player {client.Player.UserId} attempted to move while dead/respawning - ignoring");
+            return;
+        }
+        
         // Clear any combat target when player manually moves
         if (client.Player.TargetCharacter != null)
         {

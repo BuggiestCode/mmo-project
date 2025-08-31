@@ -26,6 +26,9 @@ public abstract class Character
     protected (float x, float y)? _nextTile;
     protected bool _isMoving;
     public bool IsMoving => _isMoving;
+
+    // Teleport flag for instant position changes (respawn, fast travel, etc.)
+    public bool TeleportMove { get; set; } = false;
     
     // === COMBAT STATE ===
     public CombatState CombatState { get; protected set; } = CombatState.Idle;
@@ -169,15 +172,17 @@ public abstract class Character
         
         return (newX, newY);
     }
-    
+
     /// <summary>
     /// Updates position after movement validation
     /// </summary>
-    public void UpdatePosition(float x, float y)
+    public void UpdatePosition(float x, float y, bool teleportMove = false)
     {
         X = x;
         Y = y;
         IsDirty = true;
+
+        TeleportMove = teleportMove;
     }
     
     /// <summary>

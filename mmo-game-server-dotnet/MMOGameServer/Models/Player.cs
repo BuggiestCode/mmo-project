@@ -22,7 +22,15 @@ public class Player : Character
 
     // Combat properties
     public override int AttackCooldown => 3; // 3 ticks between attacks (1.5 seconds at 500ms tick rate)
+    
+    // Death/Respawn tracking
+    public int RespawnTicksRemaining { get; set; } = 0;
+    public bool IsAwaitingRespawn => RespawnTicksRemaining > 0;
 
+    private int respawnTickCount = 4;
+
+    public (float x, float y)? DeathLocation { get; set; }
+    
     // Terrain/Visibility properties (moved from TerrainService dictionaries)
     public string? CurrentChunk { get; set; }
     public HashSet<string> VisibilityChunks { get; set; } = new();
@@ -70,15 +78,26 @@ public class Player : Character
             damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null,
             health = CurrentHealth,
             maxHealth = MaxHealth,
-            tookDamage = DamageTakenThisTick.Any()
+            tookDamage = DamageTakenThisTick.Any(),
+            isDead = IsAwaitingRespawn,  // Include death state for client animation
+            teleportMove = TeleportMove  // Flag for instant position changes
         };
+        
+        // Clear teleport flag after including in snapshot
+        if (TeleportMove)
+        {
+            TeleportMove = false;
+        }
 
         return snapshot;
     }
 
     public override void OnDeath()
     {
-        Console.WriteLine($"Player {UserId} has died! Respawning at (0,0)");
+        Console.WriteLine($"Player {UserId} has died at ({X:F2}, {Y:F2})! Setting up respawn delay...");
+        
+        // Store death location for logging
+        DeathLocation = (X, Y);
         
         // Clear combat state and paths (base class handles target cleanup)
         base.OnDeath();
@@ -86,11 +105,31 @@ public class Player : Character
         // Clear any active movement
         ClearPath();
         
+        // Set respawn delay (n ticks = n*2 second at 500ms tick rate)
+        RespawnTicksRemaining = respawnTickCount;
+        
+        // Force dirty flag for immediate update (client sees death state)
+        IsDirty = true;
+        
+        Console.WriteLine($"Player {UserId} will respawn in {RespawnTicksRemaining} ticks");
+    }
+    
+    /// <summary>
+    /// Performs the actual respawn after the delay
+    /// </summary>
+    public void PerformRespawn()
+    {
+        Console.WriteLine($"Player {UserId} respawning at (0,0) from death location ({DeathLocation?.x:F2}, {DeathLocation?.y:F2})");
+        
         // Restore health to full
         RestoreHealth();
         
         // Teleport to spawn point (0,0)
-        UpdatePosition(0, 0);
+        UpdatePosition(0, 0, true);
+        
+        // Clear death tracking
+        RespawnTicksRemaining = 0;
+        DeathLocation = null;
         
         // Force dirty flag for immediate update
         IsDirty = true;

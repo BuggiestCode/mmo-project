@@ -268,13 +268,24 @@ public class GameLoopService : BackgroundService
             {
                 client.Player.EndTick();
                 
-                // Check if player died this tick and handle respawn
-                if (!client.Player.IsAlive)
+                // Check if player died this tick
+                if (!client.Player.IsAlive && !client.Player.IsAwaitingRespawn)
                 {
                     client.Player.OnDeath();
+                }
+                // Check if player should respawn this tick
+                else if (client.Player.IsAwaitingRespawn)
+                {
+                    client.Player.RespawnTicksRemaining--;
                     
-                    // Player position changed significantly, trigger chunk update
-                    _terrainService.UpdatePlayerChunk(client.Player, client.Player.X, client.Player.Y);
+                    if (client.Player.RespawnTicksRemaining <= 0)
+                    {
+                        // Perform the actual respawn
+                        client.Player.PerformRespawn();
+                        
+                        // Player position changed significantly, trigger chunk update
+                        _terrainService.UpdatePlayerChunk(client.Player, client.Player.X, client.Player.Y);
+                    }
                 }
             }
         }
@@ -416,11 +427,22 @@ public class GameLoopService : BackgroundService
             // Send the quit request to ALL players (including quitter)
             await _gameWorld.BroadcastToAllAsync(new { type = "quitPlayer", id = client.Player.UserId });
 
-            // Save player position
+            // Save player position - handle death state specially
+            float saveX = client.Player.X;
+            float saveY = client.Player.Y;
+            
+            // If player is dead or awaiting respawn, save them at spawn point instead
+            if (!client.Player.IsAlive || client.Player.IsAwaitingRespawn)
+            {
+                saveX = 0;
+                saveY = 0;
+                _logger.LogInformation($"Player {client.Player.UserId} logged out while dead/respawning, saving at spawn point (0,0) instead of death location ({client.Player.X:F2}, {client.Player.Y:F2})");
+            }
+            
             await _databaseService.SavePlayerPositionAsync(
                 client.Player.UserId,
-                client.Player.X,
-                client.Player.Y,
+                saveX,
+                saveY,
                 client.Player.Facing);
 
             playerVisibilityChunks.UnionWith(client.Player.VisibilityChunks);

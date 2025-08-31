@@ -30,6 +30,17 @@ public class SetTargetHandler : IMessageHandler<SetTargetMessage>
             return;
         }
         
+        // Prevent targeting while dead or awaiting respawn
+        if (!client.Player.IsAlive || client.Player.IsAwaitingRespawn)
+        {
+            _logger.LogInformation($"Player {client.Player.UserId} attempted to set target while dead/respawning - ignoring");
+            await client.SendMessageAsync(new { 
+                type = "error", 
+                message = "Cannot target while dead" 
+            });
+            return;
+        }
+        
         // Clear target if requested
         if (message.TargetType == TargetType.None || message.TargetId == 0)
         {

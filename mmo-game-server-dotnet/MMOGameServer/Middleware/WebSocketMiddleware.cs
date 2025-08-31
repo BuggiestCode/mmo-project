@@ -130,11 +130,22 @@ public class WebSocketMiddleware
         {
             _logger.LogInformation($"Client {client.Player.UserId} intentional logout - skipping soft disconnect.");
             
-            // Save player position
+            // Save player position - handle death state specially
+            float saveX = client.Player.X;
+            float saveY = client.Player.Y;
+            
+            // If player is dead or awaiting respawn, save them at spawn point instead
+            if (!client.Player.IsAlive || client.Player.IsAwaitingRespawn)
+            {
+                saveX = 0;
+                saveY = 0;
+                _logger.LogInformation($"Player {client.Player.UserId} disconnected while dead/respawning, saving at spawn point (0,0) instead of death location ({client.Player.X:F2}, {client.Player.Y:F2})");
+            }
+            
             await _database.SavePlayerPositionAsync(
                 client.Player.UserId,
-                client.Player.X,
-                client.Player.Y,
+                saveX,
+                saveY,
                 client.Player.Facing);
                 
             var playerVisibilityChunks = new HashSet<string>(client.Player.VisibilityChunks);

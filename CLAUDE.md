@@ -130,6 +130,4 @@ This is a multiplayer online game (MMO) with a distributed architecture consisti
 - Connection pooling through Npgsql
 
 
-***Extend combat task***
-
-Add Character skill class (CurBaseLevel, CurValue) and set up Health, integrate with the combat system.
+***Current task: Death timing and delay for NPCs and Players***
