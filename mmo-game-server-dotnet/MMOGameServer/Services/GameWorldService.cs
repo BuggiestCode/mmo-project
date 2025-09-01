@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using MMOGameServer.Models;
+using MMOGameServer.Models.Snapshots;
 
 namespace MMOGameServer.Services;
 
@@ -105,36 +106,37 @@ public class GameWorldService
     }
     
     // Helper methods for consistent player data formatting
-    public object GetFullPlayerData(ConnectedClient client)
+    public PlayerFullData? GetFullPlayerData(ConnectedClient client)
     {
-        if (client.Player == null) return null!;
+        if (client.Player == null) return null;
         
-        return new
+        return new PlayerFullData
         {
-            id = client.Player.UserId,  // Keep as int
-            username = client.Username,
-            xPos = client.Player.X,
-            yPos = client.Player.Y,
-            facing = client.Player.Facing,
-            hairColSwatchIndex = client.Player.HairColSwatchIndex,
-            skinColSwatchIndex = client.Player.SkinColSwatchIndex,
-            underColSwatchIndex = client.Player.UnderColSwatchIndex,
-            bootsColSwatchIndex = client.Player.BootsColSwatchIndex,
-            hairStyleIndex = client.Player.HairStyleIndex,
-            isMale = client.Player.IsMale,
-            health = client.Player.CurrentHealth,
-            maxHealth = client.Player.MaxHealth,
-            tookDamage = client.Player.DamageTakenThisTick.Any()
+            Id = client.Player.UserId,
+            Username = client.Username,
+            XPos = client.Player.X,
+            YPos = client.Player.Y,
+            Facing = client.Player.Facing,
+            HairColSwatchIndex = client.Player.HairColSwatchIndex,
+            SkinColSwatchIndex = client.Player.SkinColSwatchIndex,
+            UnderColSwatchIndex = client.Player.UnderColSwatchIndex,
+            BootsColSwatchIndex = client.Player.BootsColSwatchIndex,
+            HairStyleIndex = client.Player.HairStyleIndex,
+            FacialHairStyleIndex = client.Player.FacialHairStyleIndex,
+            IsMale = client.Player.IsMale,
+            Health = client.Player.CurrentHealth,
+            MaxHealth = client.Player.MaxHealth,
+            TookDamage = client.Player.DamageTakenThisTick.Any()
         };
     }
     
-    public List<object> GetFullPlayerData(IEnumerable<int> playerIds)
+    public List<PlayerFullData> GetFullPlayerData(IEnumerable<int> playerIds)
     {
         return _clients.Values
             .Where(c => c.IsAuthenticated && c.Player != null && playerIds.Contains(c.Player.UserId))
             .Select(GetFullPlayerData)
             .Where(p => p != null)
-            .ToList();
+            .ToList()!;
     }
     
     public List<ConnectedClient> GetClientsByUserIds(IEnumerable<int> userIds)

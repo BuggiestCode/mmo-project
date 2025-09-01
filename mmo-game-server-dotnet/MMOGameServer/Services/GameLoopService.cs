@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using MMOGameServer.Models;
+using MMOGameServer.Models.Snapshots;
 using MMOGameServer.Messages.Responses;
 
 namespace MMOGameServer.Services;
@@ -214,7 +215,7 @@ public class GameLoopService : BackgroundService
                 hasVisibilityChanges || newlyVisibleNpcs.Any() || noLongerVisibleNpcs.Any())
             {
                 // Get the full player data for newly visible players
-                List<object>? clientsToLoad = null;
+                List<PlayerFullData>? clientsToLoad = null;
                 if (hasVisibilityChanges && changes.newlyVisible.Any())
                 {
                     var playerData = _gameWorld.GetFullPlayerData(changes.newlyVisible);
@@ -224,24 +225,24 @@ public class GameLoopService : BackgroundService
                         clientsToLoad = playerData;
                     }
                 }
-                
+
                 var personalizedUpdate = new StateMessage
                 {
                     SelfStateUpdate = selfUpdate,
                     Players = visiblePlayerSnapshots.Any() ? visiblePlayerSnapshots : null,
                     Npcs = visibleNpcSnapshots.Any() ? visibleNpcSnapshots : null,
-                    ClientsToLoad = clientsToLoad,
-                    ClientsToUnload = hasVisibilityChanges && changes.noLongerVisible.Any() 
+                    ClientsToLoad = clientsToLoad?.Cast<object>().ToList(),
+                    ClientsToUnload = hasVisibilityChanges && changes.noLongerVisible.Any()
                         ? changes.noLongerVisible.ToArray()
                         : null,
-                    NpcsToLoad = newlyVisibleNpcs.Any() 
+                    NpcsToLoad = newlyVisibleNpcs.Any()
                         ? _npcService?.GetNPCSnapshots(newlyVisibleNpcs)
                         : null,
                     NpcsToUnload = noLongerVisibleNpcs.Any()
                         ? noLongerVisibleNpcs.ToArray()
                         : null
                 };
-                
+        
                 updateTasks.Add(client.SendMessageAsync(personalizedUpdate));
             }
         }
@@ -428,8 +429,8 @@ public class GameLoopService : BackgroundService
             await _gameWorld.BroadcastToAllAsync(new { type = "quitPlayer", id = client.Player.UserId });
 
             // Save player position - handle death state specially
-            float saveX = client.Player.X;
-            float saveY = client.Player.Y;
+            int saveX = client.Player.X;
+            int saveY = client.Player.Y;
             
             // If player is dead or awaiting respawn, save them at spawn point instead
             if (!client.Player.IsAlive || client.Player.IsAwaitingRespawn)

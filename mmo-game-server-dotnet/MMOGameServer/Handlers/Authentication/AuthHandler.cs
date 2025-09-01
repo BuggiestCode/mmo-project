@@ -3,6 +3,7 @@ using MMOGameServer.Messages.Contracts;
 using MMOGameServer.Messages.Requests;
 using MMOGameServer.Messages.Responses;
 using MMOGameServer.Models;
+using MMOGameServer.Models.Snapshots;
 using MMOGameServer.Services;
 
 namespace MMOGameServer.Handlers.Authentication;
@@ -251,6 +252,7 @@ public class AuthHandler : IMessageHandler<AuthMessage>
                 underColSwatchIndex = client.Player.UnderColSwatchIndex,
                 bootsColSwatchIndex = client.Player.BootsColSwatchIndex,
                 hairStyleIndex = client.Player.HairStyleIndex,
+                facialHairStyleIndex = client.Player.FacialHairStyleIndex,
                 isMale = client.Player.IsMale
             },
             characterCreatorCompleted = client.Player.CharacterCreatorCompleted
@@ -266,7 +268,7 @@ public class AuthHandler : IMessageHandler<AuthMessage>
         // Send state update with visible players and NPCs
         if (visiblePlayerIDs.Any() || visibleNpcIds.Any())
         {
-            var visiblePlayersData = _gameWorld?.GetFullPlayerData(visiblePlayerIDs) ?? new List<object>();
+            var visiblePlayersData = _gameWorld?.GetFullPlayerData(visiblePlayerIDs) ?? new List<PlayerFullData>();
             var visibleNPCsData = _npcService?.GetNPCSnapshots(visibleNpcIds) ?? new List<object>();
 
             // Update player's visible NPCs tracking
@@ -274,7 +276,7 @@ public class AuthHandler : IMessageHandler<AuthMessage>
 
             var stateMessage = new StateMessage
             {
-                ClientsToLoad = visiblePlayersData?.Any() == true ? visiblePlayersData : null,
+                ClientsToLoad = visiblePlayersData?.Any() == true ? visiblePlayersData.Cast<object>().ToList() : null,
                 NpcsToLoad = visibleNPCsData?.Any() == true ? visibleNPCsData : null,
             };
 

@@ -1,3 +1,5 @@
+using MMOGameServer.Models.Snapshots;
+
 namespace MMOGameServer.Models;
 
 // NPCAIState removed - using CombatState from Character base class
@@ -12,8 +14,8 @@ public class NPC : Character
     public int ZoneId { get; set; }
     public NPCZone Zone { get; set; }
     public string Type { get; set; }
-    public override float X { get; set; }
-    public override float Y { get; set; }
+    public override int X { get; set; }
+    public override int Y { get; set; }
     public override bool IsDirty { get; set; }
     
     // NPC-specific properties
@@ -23,7 +25,7 @@ public class NPC : Character
     // Roaming behavior
     public DateTime? NextRoamTime { get; set; }
     
-    public NPC(int zoneId, NPCZone zone, string type, float x, float y)
+    public NPC(int zoneId, NPCZone zone, string type, int x, int y)
     {
         _id = _nextNpcId++;
         if (_nextNpcId > MaxNpcId)
@@ -35,7 +37,9 @@ public class NPC : Character
         Type = type;
         X = x;
         Y = y;
-        IsDirty = true;
+        // Don't mark as dirty on creation - NPCs are sent via NpcsToLoad when first visible
+        // Only mark dirty when they actually change (move, take damage, etc.)
+        IsDirty = false;
         
         // Initialize skills based on NPC type
         InitializeNPCSkills();
@@ -68,26 +72,25 @@ public class NPC : Character
         }
     }
 
-    // This needs refactoring into a /Model/Snapshot along with the Player snapshot and I need to make an NPC initial payload to pass the 'type' of npc (terrible name, conflicts with message type).
-    // For now just hard coded, front end agnostically takes it and just misses the type field (still serializes from json with extra fields that just get discarded in some cases)
-    public object GetSnapshot()
+    public NPCSnapshot GetSnapshot()
     {
-        var snapshot = new
+        var damageSplats = GetTopDamageThisTick();
+        var snapshot = new NPCSnapshot
         {
-            id = Id,
-            type = Type,
-            x = X,
-            y = Y,
-            isMoving = IsMoving,
-            inCombat = CombatState == CombatState.InCombat,
-            currentTargetId = CurrentTargetId ?? -1,  // -1 for no target (frontend convention)
-            isTargetPlayer = CurrentTargetId.HasValue ? IsTargetPlayer : false,  // Default to false when no target
-            damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null,
-            health = CurrentHealth,
-            maxHealth = MaxHealth,
-            tookDamage = DamageTakenThisTick.Any(),
-            isDead = !IsAlive,  // Include death state for client animation
-            teleportMove = TeleportMove  // Flag for instant position changes
+            Id = Id,
+            Type = Type,
+            X = X,
+            Y = Y,
+            IsMoving = IsMoving,
+            InCombat = CombatState == CombatState.InCombat,
+            CurrentTargetId = CurrentTargetId ?? -1,  // -1 for no target (frontend convention)
+            IsTargetPlayer = CurrentTargetId.HasValue ? IsTargetPlayer : false,  // Default to false when no target
+            DamageSplats = damageSplats.Any() ? damageSplats : null,
+            Health = CurrentHealth,
+            MaxHealth = MaxHealth,
+            TookDamage = DamageTakenThisTick.Any(),
+            IsDead = !IsAlive,  // Include death state for client animation
+            TeleportMove = TeleportMove  // Flag for instant position changes
         };
 
         // Clear teleport flag after including in snapshot

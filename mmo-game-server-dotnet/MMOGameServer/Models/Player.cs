@@ -1,11 +1,13 @@
+using MMOGameServer.Models.Snapshots;
+
 namespace MMOGameServer.Models;
 
 public class Player : Character
 {
     public int UserId { get; set; }
     public override int Id => UserId;
-    public override float X { get; set; }
-    public override float Y { get; set; }
+    public override int X { get; set; }
+    public override int Y { get; set; }
     public int Facing { get; set; }
     public override bool IsDirty { get; set; }
     public bool DoNetworkHeartbeat { get; set; }
@@ -18,6 +20,7 @@ public class Player : Character
     public int UnderColSwatchIndex { get; set; }
     public int BootsColSwatchIndex { get; set; }
     public int HairStyleIndex { get; set; }
+    public int FacialHairStyleIndex { get; set; }
     public bool IsMale { get; set; }
 
     // Combat properties
@@ -36,7 +39,7 @@ public class Player : Character
     public HashSet<string> VisibilityChunks { get; set; } = new();
     public HashSet<int> VisibleNPCs { get; set; } = new();
 
-    public Player(int userId, float x = 0, float y = 0)
+    public Player(int userId, int x = 0, int y = 0)
     {
         UserId = userId;
         X = x;
@@ -50,7 +53,7 @@ public class Player : Character
     }
 
     // Override to add logging
-    public new void SetPath(List<(float x, float y)>? path)
+    public new void SetPath(List<(int x, int y)>? path)
     {
         base.SetPath(path);
         if (path != null && path.Count > 0)
@@ -65,22 +68,23 @@ public class Player : Character
         Console.WriteLine($"Player {UserId} path cleared");
     }
 
-    public object GetSnapshot()
+    public PlayerSnapshot GetSnapshot()
     {
-        var snapshot = new
+        var damageSplats = GetTopDamageThisTick();
+        var snapshot = new PlayerSnapshot
         {
-            id = UserId,
-            x = X,
-            y = Y,
-            isMoving = IsMoving,
-            currentTargetId = CurrentTargetId ?? -1,  // -1 for no target (frontend convention)
-            isTargetPlayer = CurrentTargetId.HasValue ? IsTargetPlayer : false,  // Default to false when no target
-            damageSplats = GetTopDamageThisTick().Any() ? GetTopDamageThisTick() : null,
-            health = CurrentHealth,
-            maxHealth = MaxHealth,
-            tookDamage = DamageTakenThisTick.Any(),
-            isDead = IsAwaitingRespawn,  // Include death state for client animation
-            teleportMove = TeleportMove  // Flag for instant position changes
+            Id = UserId,
+            X = X,
+            Y = Y,
+            IsMoving = IsMoving,
+            CurrentTargetId = CurrentTargetId ?? -1,  // -1 for no target (frontend convention)
+            IsTargetPlayer = CurrentTargetId.HasValue ? IsTargetPlayer : false,  // Default to false when no target
+            DamageSplats = damageSplats.Any() ? damageSplats : null,
+            Health = CurrentHealth,
+            MaxHealth = MaxHealth,
+            TookDamage = DamageTakenThisTick.Any(),
+            IsDead = IsAwaitingRespawn,  // Include death state for client animation
+            TeleportMove = TeleportMove  // Flag for instant position changes
         };
         
         // Clear teleport flag after including in snapshot
