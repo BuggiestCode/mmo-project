@@ -4,11 +4,11 @@ public class NPCZone
 {
     public int Id { get; set; }
     
-    // Zone bounds in world coordinates
-    public float MinX { get; set; }
-    public float MinY { get; set; }
-    public float MaxX { get; set; }
-    public float MaxY { get; set; }
+    // Zone bounds in tile coordinates
+    public int MinX { get; set; }
+    public int MinY { get; set; }
+    public int MaxX { get; set; }
+    public int MaxY { get; set; }
     
     // Root chunk (where bottom-left corner resides)
     public int RootChunkX { get; set; }
@@ -27,7 +27,7 @@ public class NPCZone
     public List<NPC> NPCs { get; set; } = new();
     public Dictionary<int, DateTime> RespawnTimers { get; set; } = new();
     
-    public NPCZone(int id, float minX, float minY, float maxX, float maxY, string npcType, int maxNpcCount)
+    public NPCZone(int id, int minX, int minY, int maxX, int maxY, string npcType, int maxNpcCount)
     {
         Id = id;
         MinX = minX;
@@ -43,10 +43,10 @@ public class NPCZone
         var chunks = new HashSet<(int, int)>();
         
         // Calculate chunk bounds
-        var minChunkX = (int)Math.Floor((MinX + chunkSize * 0.5f) / chunkSize);
-        var minChunkY = (int)Math.Floor((MinY + chunkSize * 0.5f) / chunkSize);
-        var maxChunkX = (int)Math.Floor((MaxX + chunkSize * 0.5f) / chunkSize);
-        var maxChunkY = (int)Math.Floor((MaxY + chunkSize * 0.5f) / chunkSize);
+        var minChunkX = (int)Math.Floor((MinX + chunkSize * 0.5) / (double)chunkSize);
+        var minChunkY = (int)Math.Floor((MinY + chunkSize * 0.5) / (double)chunkSize);
+        var maxChunkX = (int)Math.Floor((MaxX + chunkSize * 0.5) / (double)chunkSize);
+        var maxChunkY = (int)Math.Floor((MaxY + chunkSize * 0.5) / (double)chunkSize);
         
         // Add all chunks in the rectangular region
         for (int x = minChunkX; x <= maxChunkX; x++)
@@ -65,10 +65,11 @@ public class NPCZone
         return x >= MinX && x <= MaxX && y >= MinY && y <= MaxY;
     }
     
-    public (float x, float y) GetRandomSpawnPoint(Random random)
+    public (int x, int y) GetRandomSpawnPoint(Random random)
     {
-        var x = MinX + (float)(random.NextDouble() * (MaxX - MinX));
-        var y = MinY + (float)(random.NextDouble() * (MaxY - MinY));
+        // Return a random integer tile position within zone bounds
+        var x = random.Next(MinX, MaxX + 1);  // +1 because Next is exclusive on upper bound
+        var y = random.Next(MinY, MaxY + 1);
         return (x, y);
     }
 }

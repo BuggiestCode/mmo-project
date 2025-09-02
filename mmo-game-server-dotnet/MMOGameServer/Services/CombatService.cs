@@ -9,8 +9,8 @@ public class CombatAttack
     public int TargetId { get; set; }
     public string TargetType { get; set; } // "Player" or "NPC"
     public int Damage { get; set; }
-    public float TargetX { get; set; }
-    public float TargetY { get; set; }
+    public int TargetX { get; set; }
+    public int TargetY { get; set; }
 }
 
 public class CombatService
@@ -30,12 +30,12 @@ public class CombatService
     /// Prioritizes the longer axis and uses deterministic tiebreaking (North/South over East/West).
     /// This creates natural diagonal movement patterns that resemble OSRS pathfinding.
     /// </summary>
-    public (float x, float y)? GetGreedyStep(float fromX, float fromY, float toX, float toY)
+    public (int x, int y)? GetGreedyStep(int fromX, int fromY, int toX, int toY)
     {
-        var currentX = (int)Math.Round(fromX);
-        var currentY = (int)Math.Round(fromY);
-        var targetX = (int)Math.Round(toX);
-        var targetY = (int)Math.Round(toY);
+        var currentX = fromX;
+        var currentY = fromY;
+        var targetX = toX;
+        var targetY = toY;
         
         // Already at target
         if (currentX == targetX && currentY == targetY)
@@ -122,10 +122,10 @@ public class CombatService
     /// Checks if two positions are adjacent in cardinal directions (NSEW).
     /// Used for determining if an attack can be made.
     /// </summary>
-    public bool IsAdjacentCardinal(float x1, float y1, float x2, float y2)
+    public bool IsAdjacentCardinal(int x1, int y1, int x2, int y2)
     {
-        var dx = Math.Abs((int)Math.Round(x1) - (int)Math.Round(x2));
-        var dy = Math.Abs((int)Math.Round(y1) - (int)Math.Round(y2));
+        var dx = Math.Abs(x1 - x2);
+        var dy = Math.Abs(y1 - y2);
         
         // Adjacent in cardinal direction means exactly one tile away in either X or Y, but not both
         return (dx == 1 && dy == 0) || (dx == 0 && dy == 1);
@@ -135,7 +135,7 @@ public class CombatService
     /// Gets the best greedy move to stay adjacent to a moving target.
     /// Used when target is moving away at end of tick.
     /// </summary>
-    public (float x, float y)? GetFollowMove(float fromX, float fromY, float targetCurrentX, float targetCurrentY, float targetNextX, float targetNextY)
+    public (int x, int y)? GetFollowMove(int fromX, int fromY, int targetCurrentX, int targetCurrentY, int targetNextX, int targetNextY)
     {
         // If target isn't actually moving, no need to follow
         if (targetCurrentX == targetNextX && targetCurrentY == targetNextY)
@@ -151,7 +151,7 @@ public class CombatService
     /// Calculates if a position is within a given range of another position.
     /// Used for aggro range checks.
     /// </summary>
-    public bool IsWithinRange(float x1, float y1, float x2, float y2, float range)
+    public bool IsWithinRange(int x1, int y1, int x2, int y2, float range)
     {
         var dx = x1 - x2;
         var dy = y1 - y2;

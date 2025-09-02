@@ -46,8 +46,8 @@ public class LogoutHandler : IMessageHandler<LogoutMessage>, IMessageHandler<Qui
         client.IsIntentionalLogout = true;
         
         // Save player position - handle death state specially
-        float saveX = client.Player.X;
-        float saveY = client.Player.Y;
+        int saveX = client.Player.X;
+        int saveY = client.Player.Y;
         
         // If player is dead or awaiting respawn, save them at spawn point instead
         if (!client.Player.IsAlive || client.Player.IsAwaitingRespawn)

@@ -62,7 +62,7 @@ public class DatabaseService
         using var selectCmd = new NpgsqlCommand(
             "SELECT user_id, x, y, facing, character_creator_complete, " +
             "hair_swatch_col_index, skin_swatch_col_index, under_swatch_col_index, " +
-            "boots_swatch_col_index, hair_style_index, is_male " +
+            "boots_swatch_col_index, hair_style_index, facial_hair_style_index, is_male " +
             "FROM players WHERE user_id = @userId", conn);
         selectCmd.Parameters.AddWithValue("userId", userId);
 
@@ -82,8 +82,9 @@ public class DatabaseService
             player.UnderColSwatchIndex = reader.IsDBNull(7) ? 0 : reader.GetInt32(7);
             player.BootsColSwatchIndex = reader.IsDBNull(8) ? 0 : reader.GetInt32(8);
             player.HairStyleIndex = reader.IsDBNull(9) ? 0 : reader.GetInt32(9);
-            player.IsMale = reader.IsDBNull(10) ? true : reader.GetBoolean(10);
-            Console.WriteLine($"Loaded existing player {userId} at ({player.X}, {player.Y}) with look: hair={player.HairColSwatchIndex}, skin={player.SkinColSwatchIndex}, under={player.UnderColSwatchIndex}, boots={player.BootsColSwatchIndex}, style={player.HairStyleIndex}, isMale={player.IsMale}");
+            player.FacialHairStyleIndex = reader.IsDBNull(10) ? 0 : reader.GetInt32(10);
+            player.IsMale = reader.IsDBNull(11) ? true : reader.GetBoolean(11);
+            Console.WriteLine($"Loaded existing player {userId} at ({player.X}, {player.Y}) with look: hair={player.HairColSwatchIndex}, skin={player.SkinColSwatchIndex}, under={player.UnderColSwatchIndex}, boots={player.BootsColSwatchIndex}, style={player.HairStyleIndex}, facialHair={player.FacialHairStyleIndex}, isMale={player.IsMale}");
             return player;
         }
 
@@ -92,9 +93,9 @@ public class DatabaseService
         using var insertCmd = new NpgsqlCommand(
             "INSERT INTO players (user_id, x, y, facing, character_creator_complete, " +
             "hair_swatch_col_index, skin_swatch_col_index, under_swatch_col_index, " +
-            "boots_swatch_col_index, hair_style_index, is_male) " +
+            "boots_swatch_col_index, hair_style_index, facial_hair_style_index, is_male) " +
             "VALUES (@userId, @x, @y, @facing, @characterCreatorComplete, " +
-            "@hairCol, @skinCol, @underCol, @bootsCol, @hairStyle, @isMale)", conn);
+            "@hairCol, @skinCol, @underCol, @bootsCol, @hairStyle, @facialHairStyle, @isMale)", conn);
         insertCmd.Parameters.AddWithValue("userId", userId);
         insertCmd.Parameters.AddWithValue("x", 0);
         insertCmd.Parameters.AddWithValue("y", 0);
@@ -105,6 +106,7 @@ public class DatabaseService
         insertCmd.Parameters.AddWithValue("underCol", 0);
         insertCmd.Parameters.AddWithValue("bootsCol", 0);
         insertCmd.Parameters.AddWithValue("hairStyle", 0);
+        insertCmd.Parameters.AddWithValue("facialHairStyle", 0);
         insertCmd.Parameters.AddWithValue("isMale", true);
         
         await insertCmd.ExecuteNonQueryAsync();
@@ -287,6 +289,12 @@ public class DatabaseService
                 hairStyleIndex = hairStyleElement.TryGetInt32(out var hairStyleVal) ? hairStyleVal : 0;
             }
 
+            int facialHairStyleIndex = 0;
+            if (message.TryGetProperty("facialHairStyleIndex", out var facialHairStyleElement))
+            {
+                facialHairStyleIndex = facialHairStyleElement.TryGetInt32(out var facialHairStyleVal) ? facialHairStyleVal : 0;
+            }
+
             bool isMale = true;
             if (message.TryGetProperty("isMale", out var isMaleElement))
             {
@@ -304,6 +312,7 @@ public class DatabaseService
                 " under_swatch_col_index = @underColSwatchIndex," +
                 " boots_swatch_col_index = @bootsColSwatchIndex," +
                 " hair_style_index = @hairStyleIndex," +
+                " facial_hair_style_index = @facialHairStyleIndex," +
                 " is_male = @isMale" +
                 " WHERE user_id = @userId", conn);
 
@@ -313,6 +322,7 @@ public class DatabaseService
             cmd.Parameters.AddWithValue("underColSwatchIndex", underColSwatchIndex);
             cmd.Parameters.AddWithValue("bootsColSwatchIndex", bootsColSwatchIndex);
             cmd.Parameters.AddWithValue("hairStyleIndex", hairStyleIndex);
+            cmd.Parameters.AddWithValue("facialHairStyleIndex", facialHairStyleIndex);
             cmd.Parameters.AddWithValue("isMale", isMale);
 
             await cmd.ExecuteNonQueryAsync();
@@ -324,7 +334,7 @@ public class DatabaseService
         }
     }
     
-    public async Task SavePlayerPositionAsync(int userId, float x, float y, int facing)
+    public async Task SavePlayerPositionAsync(int userId, int x, int y, int facing)
     {
         try
         {
@@ -334,8 +344,8 @@ public class DatabaseService
             using var cmd = new NpgsqlCommand(
                 "UPDATE players SET x = @x, y = @y, facing = @facing WHERE user_id = @userId", conn);
             cmd.Parameters.AddWithValue("userId", userId);
-            cmd.Parameters.AddWithValue("x", (int)x);
-            cmd.Parameters.AddWithValue("y", (int)y);
+            cmd.Parameters.AddWithValue("x", x);
+            cmd.Parameters.AddWithValue("y", y);
             cmd.Parameters.AddWithValue("facing", facing);
 
             await cmd.ExecuteNonQueryAsync();

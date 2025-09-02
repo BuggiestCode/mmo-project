@@ -65,10 +65,10 @@ public class TerrainService
     
     public string GetTerrainPath() => _terrainPath;
 
-    public (int chunkX, int chunkY) WorldPositionToChunkCoord(float worldX, float worldY)
+    public (int chunkX, int chunkY) WorldPositionToChunkCoord(int worldX, int worldY)
     {
-        var adjustedX = worldX + (_chunkSize * 0.5f);
-        var adjustedY = worldY + (_chunkSize * 0.5f);
+        var adjustedX = worldX + (_chunkSize * 0.5);
+        var adjustedY = worldY + (_chunkSize * 0.5);
         
         var chunkX = (int)Math.Floor(adjustedX / _chunkSize);
         var chunkY = (int)Math.Floor(adjustedY / _chunkSize);
@@ -76,7 +76,7 @@ public class TerrainService
         return (chunkX, chunkY);
     }
 
-    public (int chunkX, int chunkY, int localX, int localY) WorldPositionToTileCoord(float worldX, float worldY)
+    public (int chunkX, int chunkY, int localX, int localY) WorldPositionToTileCoord(int worldX, int worldY)
     {
         var (chunkX, chunkY) = WorldPositionToChunkCoord(worldX, worldY);
         
@@ -92,7 +92,7 @@ public class TerrainService
         return (chunkX, chunkY, localX, localY);
     }
 
-    public (HashSet<int> newlyVisible, HashSet<int> noLongerVisible) UpdatePlayerChunk(Player player, float worldX, float worldY)
+    public (HashSet<int> newlyVisible, HashSet<int> noLongerVisible) UpdatePlayerChunk(Player player, int worldX, int worldY)
     {
         var (chunkX, chunkY) = WorldPositionToChunkCoord(worldX, worldY);
         var newChunkKey = $"{chunkX},{chunkY}";
@@ -193,7 +193,7 @@ public class TerrainService
         return (newlyVisible, noLongerVisible);
     }
     
-    private HashSet<string> CalculateVisibilityChunks(float worldX, float worldY, int? customRadius = null)
+    private HashSet<string> CalculateVisibilityChunks(int worldX, int worldY, int? customRadius = null)
     {
         var (centerX, centerY) = WorldPositionToChunkCoord(worldX, worldY);
         var visibilityChunks = new HashSet<string>();
@@ -399,7 +399,7 @@ public class TerrainService
         }
     }
 
-    public bool ValidateMovement(float worldX, float worldY)
+    public bool ValidateMovement(int worldX, int worldY)
     {
         var (chunkX, chunkY, localX, localY) = WorldPositionToTileCoord(worldX, worldY);
         var chunkKey = $"{chunkX},{chunkY}";

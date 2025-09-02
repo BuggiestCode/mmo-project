@@ -71,22 +71,22 @@ public class PathfindingService
         return 1.0f;
     }
 
-    private bool IsWalkable(float worldX, float worldY)
+    private bool IsWalkable(int worldX, int worldY)
     {
         return _terrainService.ValidateMovement(worldX, worldY);
     }
 
-    public async Task<List<(float x, float y)>?> FindPathAsync(float startX, float startY, float endX, float endY, int maxDistance = 50)
+    public async Task<List<(int x, int y)>?> FindPathAsync(int startX, int startY, int endX, int endY, int maxDistance = 50)
     {
         return await Task.Run(() => FindPath(startX, startY, endX, endY, maxDistance));
     }
 
-    public List<(float x, float y)>? FindPath(float startX, float startY, float endX, float endY, int maxDistance = 50)
+    public List<(int x, int y)>? FindPath(int startX, int startY, int endX, int endY, int maxDistance = 50)
     {
-        var startXInt = (int)Math.Round(startX);
-        var startYInt = (int)Math.Round(startY);
-        var endXInt = (int)Math.Round(endX);
-        var endYInt = (int)Math.Round(endY);
+        var startXInt = startX;
+        var startYInt = startY;
+        var endXInt = endX;
+        var endYInt = endY;
         
         if (!IsWalkable(startXInt, startYInt))
         {
@@ -176,9 +176,9 @@ public class PathfindingService
         return null;
     }
 
-    private List<(float x, float y)> ReconstructPath(PathNode goalNode)
+    private List<(int x, int y)> ReconstructPath(PathNode goalNode)
     {
-        var path = new List<(float x, float y)>();
+        var path = new List<(int x, int y)>();
         var currentNode = goalNode;
         
         while (currentNode.Parent != null)
@@ -190,7 +190,7 @@ public class PathfindingService
         return path;
     }
 
-    public bool ValidateDirectMove(float fromX, float fromY, float toX, float toY)
+    public bool ValidateDirectMove(int fromX, int fromY, int toX, int toY)
     {
         if (!IsWalkable(toX, toY))
         {

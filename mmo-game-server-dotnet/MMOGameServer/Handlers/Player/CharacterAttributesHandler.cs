@@ -46,6 +46,8 @@ public class CharacterAttributesHandler : IMessageHandler<SaveCharacterLookAttri
             client.Player.BootsColSwatchIndex = message.BootsColSwatchIndex.Value;
         if (message.HairStyleIndex.HasValue)
             client.Player.HairStyleIndex = message.HairStyleIndex.Value;
+        if (message.FacialHairStyleIndex.HasValue)
+            client.Player.FacialHairStyleIndex = message.FacialHairStyleIndex.Value;
         if (message.IsMale.HasValue)
             client.Player.IsMale = message.IsMale.Value;
         
@@ -69,6 +71,7 @@ public class CharacterAttributesHandler : IMessageHandler<SaveCharacterLookAttri
             UnderColSwatchIndex = client.Player.UnderColSwatchIndex,
             BootsColSwatchIndex = client.Player.BootsColSwatchIndex,
             HairStyleIndex = client.Player.HairStyleIndex,
+            FacialHairStyleIndex = client.Player.FacialHairStyleIndex,
             IsMale = client.Player.IsMale
         };
         

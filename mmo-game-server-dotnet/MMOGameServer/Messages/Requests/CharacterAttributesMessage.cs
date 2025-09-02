@@ -23,6 +23,9 @@ public class SaveCharacterLookAttributesMessage : IGameMessage
     [JsonPropertyName("hairStyleIndex")]
     public int? HairStyleIndex { get; set; }
     
+    [JsonPropertyName("facialHairStyleIndex")]
+    public int? FacialHairStyleIndex { get; set; }
+    
     [JsonPropertyName("isMale")]
     public bool? IsMale { get; set; }
 }

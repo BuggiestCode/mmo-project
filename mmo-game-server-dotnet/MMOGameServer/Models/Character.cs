@@ -9,8 +9,8 @@ public enum CombatState
 public abstract class Character
 {
     public abstract int Id { get; }
-    public abstract float X { get; set; }
-    public abstract float Y { get; set; }
+    public abstract int X { get; set; }
+    public abstract int Y { get; set; }
     public abstract bool IsDirty { get; set; }
     
     // === SKILLS SYSTEM ===
@@ -22,8 +22,8 @@ public abstract class Character
     public int MaxHealth => HealthSkill?.BaseLevel ?? 0;
     
     // === MOVEMENT STATE ===
-    protected List<(float x, float y)> _currentPath = new();
-    protected (float x, float y)? _nextTile;
+    protected List<(int x, int y)> _currentPath = new();
+    protected (int x, int y)? _nextTile;
     protected bool _isMoving;
     public bool IsMoving => _isMoving;
 
@@ -98,7 +98,7 @@ public abstract class Character
     /// <summary>
     /// Sets an A* path for the character to follow
     /// </summary>
-    public void SetPath(List<(float x, float y)>? path)
+    public void SetPath(List<(int x, int y)>? path)
     {
         if (path == null || path.Count == 0)
         {
@@ -106,7 +106,7 @@ public abstract class Character
             return;
         }
         
-        _currentPath = new List<(float x, float y)>(path);
+        _currentPath = new List<(int x, int y)>(path);
         _isMoving = true;
         IsDirty = true;
     }
@@ -114,7 +114,7 @@ public abstract class Character
     /// <summary>
     /// Gets the next move from the current path
     /// </summary>
-    public (float x, float y)? GetNextMove()
+    public (int x, int y)? GetNextMove()
     {
         // No more moves
         if (_currentPath.Count == 0)
@@ -143,12 +143,12 @@ public abstract class Character
     /// Performs a single greedy step toward a target position.
     /// Sets _isMoving for this tick.
     /// </summary>
-    public (float x, float y)? GreedyStepToward(float targetX, float targetY)
+    public (float x, float y)? GreedyStepToward(int targetX, int targetY)
     {
-        var currentX = (int)Math.Round(X);
-        var currentY = (int)Math.Round(Y);
-        var destX = (int)Math.Round(targetX);
-        var destY = (int)Math.Round(targetY);
+        var currentX = X;
+        var currentY = Y;
+        var destX = targetX;
+        var destY = targetY;
         
         // Already at target
         if (currentX == destX && currentY == destY)
@@ -176,7 +176,7 @@ public abstract class Character
     /// <summary>
     /// Updates position after movement validation
     /// </summary>
-    public void UpdatePosition(float x, float y, bool teleportMove = false)
+    public void UpdatePosition(int x, int y, bool teleportMove = false)
     {
         X = x;
         Y = y;
@@ -206,15 +206,15 @@ public abstract class Character
     /// <summary>
     /// Get the current path (for validation purposes)
     /// </summary>
-    public List<(float x, float y)>? GetCurrentPath()
+    public List<(int x, int y)>? GetCurrentPath()
     {
-        return _currentPath.Count > 0 ? new List<(float x, float y)>(_currentPath) : null;
+        return _currentPath.Count > 0 ? new List<(int x, int y)>(_currentPath) : null;
     }
     
     /// <summary>
     /// Gets the starting position for pathfinding (considers pending moves)
     /// </summary>
-    public (float x, float y) GetPathfindingStartPosition()
+    public (int x, int y) GetPathfindingStartPosition()
     {
         return _nextTile ?? (X, Y);
     }

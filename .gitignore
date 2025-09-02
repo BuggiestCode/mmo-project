@@ -12,7 +12,6 @@ DONOTDELETE_dbLogin.txt
 [Bb]uild/
 obj/
 *.user
-*.csproj
 *.sln
 
 # OS junk
@@ -23,3 +22,14 @@ mmo-backend/node_modules/
 mmo-frontend/node_modules/
 mmo-game-server/node_modules/
 dump.sql
+
+# Windows system device names that can appear due to command redirection
+nul
+con
+aux
+prn
+
+# Build artifacts
+*.dll
+*.exe
+*.pdb

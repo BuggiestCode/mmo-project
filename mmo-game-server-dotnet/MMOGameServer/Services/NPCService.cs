@@ -50,13 +50,15 @@ public class NPCService
             return null;
         }
         
-        float x = 0, y = 0;
+        int x = 0, y = 0;
         bool foundWalkableSpawn = false;
         
         // Try up to configured max times to find a walkable spawn point
         for (int attempt = 0; attempt < _maxSpawnRetries; attempt++)
         {
-            (x, y) = zone.GetRandomSpawnPoint(_random);
+            var spawnPoint = zone.GetRandomSpawnPoint(_random);
+            x = spawnPoint.x;  // Already an integer from GetRandomSpawnPoint
+            y = spawnPoint.y;  // Already an integer from GetRandomSpawnPoint
             if (_terrainService.ValidateMovement(x, y))
             {
                 foundWalkableSpawn = true;
@@ -66,7 +68,7 @@ public class NPCService
         
         if (!foundWalkableSpawn)
         {
-            _logger.LogWarning($"Failed to find walkable spawn point for NPC in zone {zone.Id} after {_maxSpawnRetries} attempts. Zone bounds: ({zone.MinX:F2},{zone.MinY:F2}) to ({zone.MaxX:F2},{zone.MaxY:F2})");
+            _logger.LogWarning($"Failed to find walkable spawn point for NPC in zone {zone.Id} after {_maxSpawnRetries} attempts. Zone bounds: ({zone.MinX},{zone.MinY}) to ({zone.MaxX},{zone.MaxY})");
             return null;
         }
         
@@ -82,7 +84,7 @@ public class NPCService
             chunk.NPCsOnChunk.Add(npc.Id);
         }
         
-        _logger.LogInformation($"Spawned NPC {npc.Id} of type '{zone.NPCType}' at ({x:F2},{y:F2})");
+        _logger.LogInformation($"Spawned NPC {npc.Id} of type '{zone.NPCType}' at ({x},{y})");
         return npc;
     }
 
@@ -125,7 +127,7 @@ public class NPCService
         _logger.LogInformation($"Spawned {spawnedCount}/{zone.MaxNPCCount} NPCs in zone {zone.Id}");
     }
     
-    public void UpdateNPCPosition(NPC npc, float newX, float newY)
+    public void UpdateNPCPosition(NPC npc, int newX, int newY)
     {
         var (oldChunkX, oldChunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
         var (newChunkX, newChunkY) = _terrainService.WorldPositionToChunkCoord(newX, newY);
@@ -292,7 +294,7 @@ public class NPCService
     {
         try
         {
-            _logger.LogInformation($"NPC {npc.Id} (type: {npc.Type}) has died at ({npc.X:F2}, {npc.Y:F2})");
+            _logger.LogInformation($"NPC {npc.Id} (type: {npc.Type}) has died at ({npc.X}, {npc.Y})");
         
         // Clear target relationships
         npc.OnRemove();
@@ -386,7 +388,7 @@ public class NPCService
         // Check if current position is walkable first
         if (!_terrainService.ValidateMovement(npc.X, npc.Y))
         {
-            _logger.LogError($"NPC {npc.Id} current position ({npc.X:F2},{npc.Y:F2}) is not walkable! Despawning and respawning...");
+            _logger.LogError($"NPC {npc.Id} current position ({npc.X},{npc.Y}) is not walkable! Despawning and respawning...");
             DespawnAndRespawnNPC(npc, zone);
             return;
         }
@@ -395,13 +397,13 @@ public class NPCService
         for (int attempt = 0; attempt < _maxRoamRetries; attempt++)
         {
             // Generate random target position within zone bounds
-            var targetX = zone.MinX + (float)(_random.NextDouble() * (zone.MaxX - zone.MinX));
-            var targetY = zone.MinY + (float)(_random.NextDouble() * (zone.MaxY - zone.MinY));
+            int targetX = _random.Next(zone.MinX, zone.MaxX + 1);
+            int targetY = _random.Next(zone.MinY, zone.MaxY + 1);
             
             // Validate target position is walkable before attempting pathfinding
             if (!_terrainService.ValidateMovement(targetX, targetY))
             {
-                _logger.LogDebug($"NPC {npc.Id} roam target ({targetX:F2},{targetY:F2}) not walkable, retrying...");
+                _logger.LogDebug($"NPC {npc.Id} roam target ({targetX},{targetY}) not walkable, retrying...");
                 continue;
             }
             
@@ -410,7 +412,7 @@ public class NPCService
             if (path != null && path.Count() > 0)
             {
                 npc.SetPath(path);
-                _logger.LogDebug($"NPC {npc.Id} roaming to ({targetX:F2},{targetY:F2})");
+                _logger.LogDebug($"NPC {npc.Id} roaming to ({targetX},{targetY})");
                 return;
             }
         }
@@ -433,13 +435,13 @@ public class NPCService
             chunk.NPCsOnChunk.Remove(npc.Id);
         }
         
-        _logger.LogInformation($"Despawned NPC {npc.Id} from invalid position ({npc.X:F2},{npc.Y:F2})");
+        _logger.LogInformation($"Despawned NPC {npc.Id} from invalid position ({npc.X},{npc.Y})");
         
         // Try to respawn using the helper method
         var newNpc = SpawnNPC(zone);
         if (newNpc != null)
         {
-            _logger.LogInformation($"Respawned NPC {newNpc.Id} at position ({newNpc.X:F2},{newNpc.Y:F2})");
+            _logger.LogInformation($"Respawned NPC {newNpc.Id} at position ({newNpc.X},{newNpc.Y})");
         }
         else
         {
@@ -501,10 +503,10 @@ public class NPCService
                 return;
             }
 
-            var minX = zoneData.GetProperty("minX").GetSingle();
-            var minY = zoneData.GetProperty("minY").GetSingle();
-            var maxX = zoneData.GetProperty("maxX").GetSingle();
-            var maxY = zoneData.GetProperty("maxY").GetSingle();
+            var minX = zoneData.GetProperty("minX").GetInt32();
+            var minY = zoneData.GetProperty("minY").GetInt32();
+            var maxX = zoneData.GetProperty("maxX").GetInt32();
+            var maxY = zoneData.GetProperty("maxY").GetInt32();
             var npcType = zoneData.GetProperty("npcType").GetString() ?? "default";
             var maxNpcCount = zoneData.GetProperty("maxCount").GetInt32();
 
@@ -589,10 +591,10 @@ public class NPCService
                     if (currentZoneId == zoneId)
                     {
                         // Found our zone definition - recreate it
-                        var minX = zoneElement.GetProperty("minX").GetSingle();
-                        var minY = zoneElement.GetProperty("minY").GetSingle();
-                        var maxX = zoneElement.GetProperty("maxX").GetSingle();
-                        var maxY = zoneElement.GetProperty("maxY").GetSingle();
+                        var minX = zoneElement.GetProperty("minX").GetInt32();
+                        var minY = zoneElement.GetProperty("minY").GetInt32();
+                        var maxX = zoneElement.GetProperty("maxX").GetInt32();
+                        var maxY = zoneElement.GetProperty("maxY").GetInt32();
                         var npcType = zoneElement.GetProperty("npcType").GetString() ?? "default";
                         var maxNpcCount = zoneElement.GetProperty("maxCount").GetInt32();
                         

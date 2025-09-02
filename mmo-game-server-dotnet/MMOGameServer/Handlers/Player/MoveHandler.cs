@@ -37,8 +37,10 @@ public class MoveHandler : IMessageHandler<MoveMessage>
         var startPos = client.Player.GetPathfindingStartPosition();
         _logger.LogInformation($"Player {client.Player.UserId} requesting move from ({startPos.x}, {startPos.y}) to ({message.DestinationX}, {message.DestinationY})");
         
-        // Calculate path using pathfinding service
-        var path = await _pathfinding.FindPathAsync(startPos.x, startPos.y, message.DestinationX, message.DestinationY);
+        // Calculate path using pathfinding service (round float click positions to nearest tile)
+        var destX = (int)Math.Round(message.DestinationX);
+        var destY = (int)Math.Round(message.DestinationY);
+        var path = await _pathfinding.FindPathAsync(startPos.x, startPos.y, destX, destY);
         
         if (path != null && path.Count > 0)
         {
