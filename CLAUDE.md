@@ -130,4 +130,9 @@ This is a multiplayer online game (MMO) with a distributed architecture consisti
 - Connection pooling through Npgsql
 
 
-***Current task: Death timing and delay for NPCs and Players***
+***Current task: Health regend***
+- Add a per-character healthRegen counter
+- Add a 'regen every n ticks' value
+- If Character takes damage, per-character healthRegen counter resets to 0
+- If process character in tick and their curHealth < maxHealth && healthRegen >= regen every n ticks, increment curHealth by 1, do the same if our curHealth is above maxHealth (tick down overheal)
+- Cur health modification should automatically get sent to the cleint(s) via the existing system no changes need to be made to the messaging.

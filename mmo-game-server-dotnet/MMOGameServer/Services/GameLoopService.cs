@@ -135,6 +135,20 @@ public class GameLoopService : BackgroundService
             }
         }
         
+        // === HEALTH REGENERATION PHASE ===
+
+        // Process player health regeneration
+        if (_playerService != null)
+        {
+            _playerService.ProcessHealthRegeneration();
+        }
+        
+        // Process NPC health regeneration
+        if (_npcService != null)
+        {
+            _npcService.ProcessHealthRegeneration();
+        }
+
         // === POST-COMBAT CLEANUP ===
 
         // Build snapshot of all dirty players

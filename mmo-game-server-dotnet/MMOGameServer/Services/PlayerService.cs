@@ -234,4 +234,17 @@ public class PlayerService
             .Select(c => c.Player!)
             .ToList();
     }
+    
+    /// <summary>
+    /// Process health regeneration for all active players.
+    /// </summary>
+    public void ProcessHealthRegeneration()
+    {
+        var activePlayers = GetActivePlayers();
+        
+        foreach (var player in activePlayers)
+        {
+            player.ProcessHealthRegeneration();
+        }
+    }
 }

@@ -44,6 +44,10 @@ public abstract class Character
     public int AttackCooldownRemaining { get; set; }
     public abstract int AttackCooldown { get; }
     
+    // Health regeneration properties
+    public int HealthRegenCounter { get; set; } = 0;
+    public virtual int HealthRegenTicks => 10; // Default: regenerate every 10 ticks (5 seconds)
+    
     // Damage tracking for visualization
     public List<int> DamageTakenThisTick { get; private set; } = new();
     public List<int> DamageTakenLastTick { get; private set; } = new();
@@ -52,6 +56,9 @@ public abstract class Character
     {
         DamageTakenThisTick.Add(amount);
         IsDirty = true;
+        
+        // Reset health regeneration counter when taking damage
+        HealthRegenCounter = 0;
         
         // Apply damage to health skill
         if (HealthSkill != null)
@@ -329,5 +336,36 @@ public abstract class Character
             snapshot[skill.Type.ToString().ToLower()] = skill.GetSnapshot();
         }
         return snapshot;
+    }
+    
+    /// <summary>
+    /// Processes health regeneration for this character
+    /// </summary>
+    public void ProcessHealthRegeneration()
+    {
+        // Only process if alive and health skill exists
+        if (!IsAlive || HealthSkill == null) return;
+        
+        // Increment the regen counter
+        HealthRegenCounter++;
+        
+        // Check if it's time to regenerate
+        if (HealthRegenCounter >= HealthRegenTicks)
+        {
+            // Reset counter
+            HealthRegenCounter = 0;
+            
+            // Handle normal regeneration (cur < max)
+            if (CurrentHealth < MaxHealth)
+            {
+                Heal(1);
+            }
+            // Handle overheal tick down (cur > max)
+            else if (CurrentHealth > MaxHealth)
+            {
+                HealthSkill.Modify(-1);
+                IsDirty = true;
+            }
+        }
     }
 }

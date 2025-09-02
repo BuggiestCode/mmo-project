@@ -965,6 +965,19 @@ public class NPCService
     }
     
     /// <summary>
+    /// Process health regeneration for all active NPCs.
+    /// </summary>
+    public void ProcessHealthRegeneration()
+    {
+        var activeNpcs = GetActiveNPCs();
+        
+        foreach (var npc in activeNpcs)
+        {
+            npc.ProcessHealthRegeneration();
+        }
+    }
+    
+    /// <summary>
     /// Get an NPC by ID
     /// </summary>
     public NPC? GetNPC(int npcId)
