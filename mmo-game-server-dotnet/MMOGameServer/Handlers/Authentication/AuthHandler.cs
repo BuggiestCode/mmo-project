@@ -240,20 +240,22 @@ public class AuthHandler : IMessageHandler<AuthMessage>
         var spawnMessage = new
         {
             type = "spawnPlayer",
-            player = new
+            player = new PlayerFullData()
             {
-                id = client.Player.UserId,
-                username = client.Username,
-                xPos = client.Player.X,
-                yPos = client.Player.Y,
-                facing = client.Player.Facing,
-                hairColSwatchIndex = client.Player.HairColSwatchIndex,
-                skinColSwatchIndex = client.Player.SkinColSwatchIndex,
-                underColSwatchIndex = client.Player.UnderColSwatchIndex,
-                bootsColSwatchIndex = client.Player.BootsColSwatchIndex,
-                hairStyleIndex = client.Player.HairStyleIndex,
-                facialHairStyleIndex = client.Player.FacialHairStyleIndex,
-                isMale = client.Player.IsMale
+                Id = client.Player.UserId,
+                Username = client.Username,
+                XPos = client.Player.X,
+                YPos = client.Player.Y,
+                Facing = client.Player.Facing,
+                HairColSwatchIndex = client.Player.HairColSwatchIndex,
+                SkinColSwatchIndex = client.Player.SkinColSwatchIndex,
+                UnderColSwatchIndex = client.Player.UnderColSwatchIndex,
+                BootsColSwatchIndex = client.Player.BootsColSwatchIndex,
+                HairStyleIndex = client.Player.HairStyleIndex,
+                FacialHairStyleIndex = client.Player.FacialHairStyleIndex,
+                IsMale = client.Player.IsMale,
+                Health = client.Player.CurrentHealth,
+                MaxHealth = client.Player.MaxHealth
             },
             characterCreatorCompleted = client.Player.CharacterCreatorCompleted
         };

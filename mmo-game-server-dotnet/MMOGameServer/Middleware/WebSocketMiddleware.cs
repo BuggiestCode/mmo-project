@@ -142,11 +142,18 @@ public class WebSocketMiddleware
                 _logger.LogInformation($"Player {client.Player.UserId} disconnected while dead/respawning, saving at spawn point (0,0) instead of death location ({client.Player.X:F2}, {client.Player.Y:F2})");
             }
             
-            await _database.SavePlayerPositionAsync(
-                client.Player.UserId,
-                saveX,
-                saveY,
-                client.Player.Facing);
+            // Temporarily update player position for save
+            var originalX = client.Player.X;
+            var originalY = client.Player.Y;
+            client.Player.X = saveX;
+            client.Player.Y = saveY;
+            
+            // Use comprehensive save which handles respawn edge cases
+            await _database.SavePlayerToDatabase(client.Player);
+            
+            // Restore original position (though client is disconnecting)
+            client.Player.X = originalX;
+            client.Player.Y = originalY;
                 
             var playerVisibilityChunks = new HashSet<string>(client.Player.VisibilityChunks);
         

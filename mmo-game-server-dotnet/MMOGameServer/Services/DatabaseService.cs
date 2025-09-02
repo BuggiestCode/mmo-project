@@ -62,7 +62,10 @@ public class DatabaseService
         using var selectCmd = new NpgsqlCommand(
             "SELECT user_id, x, y, facing, character_creator_complete, " +
             "hair_swatch_col_index, skin_swatch_col_index, under_swatch_col_index, " +
-            "boots_swatch_col_index, hair_style_index, facial_hair_style_index, is_male " +
+            "boots_swatch_col_index, hair_style_index, facial_hair_style_index, is_male, " +
+            "skill_health_cur_level, skill_health_xp, " +
+            "skill_attack_cur_level, skill_attack_xp, " +
+            "skill_defence_cur_level, skill_defence_xp " +
             "FROM players WHERE user_id = @userId", conn);
         selectCmd.Parameters.AddWithValue("userId", userId);
 
@@ -84,6 +87,10 @@ public class DatabaseService
             player.HairStyleIndex = reader.IsDBNull(9) ? 0 : reader.GetInt32(9);
             player.FacialHairStyleIndex = reader.IsDBNull(10) ? 0 : reader.GetInt32(10);
             player.IsMale = reader.IsDBNull(11) ? true : reader.GetBoolean(11);
+            
+            // Load skill data from database
+            LoadPlayerSkillsFromReader(player, reader);
+            
             Console.WriteLine($"Loaded existing player {userId} at ({player.X}, {player.Y}) with look: hair={player.HairColSwatchIndex}, skin={player.SkinColSwatchIndex}, under={player.UnderColSwatchIndex}, boots={player.BootsColSwatchIndex}, style={player.HairStyleIndex}, facialHair={player.FacialHairStyleIndex}, isMale={player.IsMale}");
             return player;
         }
@@ -118,6 +125,30 @@ public class DatabaseService
         // Look attributes default to 0 (already set by default in Player class)
 
         return newPlayer;
+    }
+    
+    /// <summary>
+    /// Loads player skills from database reader (assumes reader is at the correct row)
+    /// Reader columns must be in order: ..., skill_health_cur_level, skill_health_xp, skill_attack_cur_level, skill_attack_xp, skill_defence_cur_level, skill_defence_xp
+    /// </summary>
+    private void LoadPlayerSkillsFromReader(Player player, NpgsqlDataReader reader)
+    {
+        // Load Health skill (columns 12, 13)
+        var healthCurLevel = reader.IsDBNull(12) ? 10 : reader.GetInt16(12);
+        var healthXP = reader.IsDBNull(13) ? 1822 : reader.GetInt32(13);
+        player.InitializeSkillFromXP(SkillType.Health, healthXP, healthCurLevel);
+        
+        // Load Attack skill (columns 14, 15)
+        var attackCurLevel = reader.IsDBNull(14) ? 1 : reader.GetInt16(14);
+        var attackXP = reader.IsDBNull(15) ? 0 : reader.GetInt32(15);
+        player.InitializeSkillFromXP(SkillType.Attack, attackXP, attackCurLevel);
+        
+        // Load Defence skill (columns 16, 17)
+        var defenceCurLevel = reader.IsDBNull(16) ? 1 : reader.GetInt16(16);
+        var defenceXP = reader.IsDBNull(17) ? 0 : reader.GetInt32(17);
+        player.InitializeSkillFromXP(SkillType.Defence, defenceXP, defenceCurLevel);
+        
+        Console.WriteLine($"Loaded skills - Health: {healthCurLevel} (XP: {healthXP}), Attack: {attackCurLevel} (XP: {attackXP}), Defence: {defenceCurLevel} (XP: {defenceXP})");
     }
     
     public async Task<bool> CreateSessionAsync(int userId)
@@ -331,6 +362,58 @@ public class DatabaseService
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to save player {userId} look attributes: {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// Saves complete player state to database including position, facing, and skills
+    /// </summary>
+    public async Task SavePlayerToDatabase(Player player)
+    {
+        try
+        {
+            using var conn = new NpgsqlConnection(_gameConnectionString);
+            await conn.OpenAsync();
+
+            // Handle special cases for respawn states - save appropriate health values
+            var healthSkill = player.GetSkill(SkillType.Health);
+            var attackSkill = player.GetSkill(SkillType.Attack);
+            var defenceSkill = player.GetSkill(SkillType.Defence);
+
+            // For health: if player is awaiting respawn, save base health not current (which might be 0)
+            var healthCurLevel = player.IsAwaitingRespawn && healthSkill != null ? healthSkill.BaseLevel : (healthSkill?.CurrentValue ?? 10);
+            
+            using var cmd = new NpgsqlCommand(
+                "UPDATE players SET " +
+                "x = @x, y = @y, facing = @facing, " +
+                "skill_health_cur_level = @healthCurLevel, skill_health_xp = @healthXP, " +
+                "skill_attack_cur_level = @attackCurLevel, skill_attack_xp = @attackXP, " +
+                "skill_defence_cur_level = @defenceCurLevel, skill_defence_xp = @defenceXP " +
+                "WHERE user_id = @userId", conn);
+                
+            cmd.Parameters.AddWithValue("userId", player.UserId);
+            cmd.Parameters.AddWithValue("x", player.X);
+            cmd.Parameters.AddWithValue("y", player.Y);
+            cmd.Parameters.AddWithValue("facing", player.Facing);
+            
+            // Health skill
+            cmd.Parameters.AddWithValue("healthCurLevel", (short)healthCurLevel);
+            cmd.Parameters.AddWithValue("healthXP", healthSkill?.CurrentXP ?? 1822);
+            
+            // Attack skill
+            cmd.Parameters.AddWithValue("attackCurLevel", (short)(attackSkill?.CurrentValue ?? 1));
+            cmd.Parameters.AddWithValue("attackXP", attackSkill?.CurrentXP ?? 0);
+            
+            // Defence skill
+            cmd.Parameters.AddWithValue("defenceCurLevel", (short)(defenceSkill?.CurrentValue ?? 1));
+            cmd.Parameters.AddWithValue("defenceXP", defenceSkill?.CurrentXP ?? 0);
+
+            await cmd.ExecuteNonQueryAsync();
+            Console.WriteLine($"Saved complete player {player.UserId} state - Pos: ({player.X}, {player.Y}), Health: {healthCurLevel} ({healthSkill?.CurrentXP ?? 1822} XP)");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to save player {player.UserId} to database: {ex.Message}");
         }
     }
     

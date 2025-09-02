@@ -297,6 +297,14 @@ public abstract class Character
     }
     
     /// <summary>
+    /// Initializes a skill from XP and current value (for database loading)
+    /// </summary>
+    public void InitializeSkillFromXP(SkillType type, long xp, int currentValue)
+    {
+        Skills[type] = new Skill(type, xp, currentValue);
+    }
+    
+    /// <summary>
     /// Gets a skill by type
     /// </summary>
     public Skill? GetSkill(SkillType type)

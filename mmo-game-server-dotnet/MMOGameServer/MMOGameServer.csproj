@@ -18,6 +18,11 @@
   <ItemGroup>
     <!-- Prevent automatic copying of terrain files - handled by Dockerfile in production -->
     <Content Remove="terrain\**\*.json" />
+    
+    <!-- Include XP thresholds CSV for deployment -->
+    <Content Include="levels\xp_thresholds.csv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

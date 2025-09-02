@@ -14,7 +14,7 @@ CREATE TABLE players (
   is_male BOOLEAN NOT NULL DEFAULT true
 
   skill_health_cur_level SMALLINT NOT NULL DEFAULT 10,
-  skill_health_xp INTEGER NOT NULL DEFAULT 1822,  -- [XP Required(L) = CEIL((10 * (L - 1)^3)/4)] -> 1822 = level 10
+  skill_health_xp INTEGER NOT NULL DEFAULT 5064,  -- Σ[XP Required(L) = CEIL((10 * (L - 1)^3)/4)] -> 1822 = level 10
 
   skill_attack_cur_level SMALLINT NOT NULL DEFAULT 1,
   skill_attack_xp INTEGER NOT NULL DEFAULT 0,
@@ -31,7 +31,7 @@ ALTER TABLE players DROP COLUMN IF EXISTS skill_health_max_level;
 -- ADD
 ALTER TABLE players ADD COLUMN skill_attack_xp INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE players ADD COLUMN skill_defence_xp INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE players ADD COLUMN skill_health_xp INTEGER NOT NULL DEFAULT 1822;
+ALTER TABLE players ADD COLUMN skill_health_xp INTEGER NOT NULL DEFAULT 5064;
 
 
 ALTER TABLE players ADD COLUMN skill_attack_cur_level SMALLINT NOT NULL DEFAULT 1;
