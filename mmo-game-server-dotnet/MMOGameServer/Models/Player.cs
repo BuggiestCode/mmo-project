@@ -49,9 +49,6 @@ public class Player : Character
         Facing = 0;
         IsDirty = false;
         DoNetworkHeartbeat = false;
-
-        // Initialize skills
-        InitializeSkill(SkillType.HEALTH, 10); // Start with 10 HP
     }
 
     // Override to add logging

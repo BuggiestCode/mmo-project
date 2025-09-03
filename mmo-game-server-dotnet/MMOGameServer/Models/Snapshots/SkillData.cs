@@ -5,7 +5,7 @@ namespace MMOGameServer.Models.Snapshots;
 public class SkillData
 {
     [JsonPropertyName("skillType")]
-    public string SkillType { get; set; } = string.Empty;
+    public int SkillType { get; set; }
 
     [JsonPropertyName("baseLevel")]
     public int BaseLevel { get; set; }

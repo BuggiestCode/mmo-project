@@ -338,12 +338,12 @@ public abstract class Character
     /// <summary>
     /// Gets a snapshot of all skills for network sync
     /// </summary>
-    public List<SkillData> GetSkillsSnapshot()
+    public List<SkillData> GetSkillsSnapshot(bool force = false)
     {
         var snapshot = new List<SkillData>();
         foreach (Skill skill in Skills.Values)
         {
-            if (skill.IsDirty)
+            if (skill.IsDirty || force)
             {
                 snapshot.Add(skill.GetSnapshot());
             }

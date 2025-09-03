@@ -2,6 +2,17 @@ namespace MMOGameServer.Models;
 using MMOGameServer.Models.Snapshots;
 
 /// <summary>
+/// Enum defining all available skill types in the game.
+/// </summary>
+public enum SkillType
+{
+    // Combat skills
+    HEALTH = 0,
+    ATTACK = 1,
+    DEFENCE = 2
+}
+
+/// <summary>
 /// Represents a skill in the OSRS-style skill system.
 /// Each skill has a base level (permanent progression) and a current value (can be modified by buffs/debuffs).
 /// </summary>
@@ -9,7 +20,7 @@ public class Skill
 {
     private static int[]? _xpThresholds;
     private static readonly object _xpThresholdsLock = new object();
-    
+
     public SkillType Type { get; }
     public int BaseLevel { get; private set; }
     public int CurrentValue { get; private set; }
@@ -17,33 +28,28 @@ public class Skill
 
     public bool IsDirty { get; private set; } = false;
     public bool LevelUpOccurredThisTick { get; private set; }
-    
+
     /// <summary>
     /// The maximum value this skill can be boosted to (typically base level + some percentage).
     /// Can be overridden for specific skills.
     /// </summary>
     public int MaxValue => BaseLevel + (int)(BaseLevel * 0.2f); // Default: 20% above base
-    
+
     /// <summary>
     /// The minimum value this skill can be reduced to.
     /// </summary>
     public int MinValue => 0;
-    
-    /// <summary>
-    /// Indicates if the current value differs from the base level.
-    /// </summary>
-    public bool IsModified => CurrentValue != BaseLevel;
-    
+
     /// <summary>
     /// Indicates if the skill is buffed above base level.
     /// </summary>
     public bool IsBuffed => CurrentValue > BaseLevel;
-    
+
     /// <summary>
     /// Indicates if the skill is debuffed below base level.
     /// </summary>
     public bool IsDebuffed => CurrentValue < BaseLevel;
-    
+
     public Skill(SkillType type, int baseLevel)
     {
         Type = type;
@@ -51,7 +57,7 @@ public class Skill
         CurrentValue = baseLevel;
         CurrentXP = GetXPForLevel(baseLevel);
     }
-    
+
     /// <summary>
     /// Creates a skill from XP amount - calculates the base level from XP
     /// </summary>
@@ -81,7 +87,7 @@ public class Skill
 
         IsDirty = true;
     }
-    
+
     /// <summary>
     /// Modifies the current value by a relative amount.
     /// Positive values buff, negative values debuff.
@@ -92,10 +98,10 @@ public class Skill
         CurrentValue = Math.Clamp(CurrentValue + amount, MinValue, MaxValue);
 
         IsDirty = true;
-        
+
         return CurrentValue - oldValue; // Return actual change
     }
-    
+
     /// <summary>
     /// Sets the current value to a specific amount.
     /// </summary>
@@ -104,7 +110,7 @@ public class Skill
         CurrentValue = Math.Clamp(value, MinValue, MaxValue);
         IsDirty = true;
     }
-    
+
     /// <summary>
     /// Recharges the skill toward base level by a specified amount.
     /// If amount is 0 or negative, fully recharges to base.
@@ -128,7 +134,7 @@ public class Skill
         }
         IsDirty = true;
     }
-    
+
     /// <summary>
     /// Gets the effective percentage of the skill (current/base).
     /// </summary>
@@ -137,25 +143,15 @@ public class Skill
         if (BaseLevel == 0) return 0;
         return (float)CurrentValue / BaseLevel;
     }
-    
+
     /// <summary>
     /// Modifies the current XP by a relative amount and recalculates base level if needed.
     /// </summary>
     public void ModifyXP(int amount)
     {
-        var oldXP = CurrentXP;
-        CurrentXP = Math.Max(0, Math.Min(CurrentXP + amount, 1_000_000_000));
-        
-        // Recalculate base level from new XP
-        var newBaseLevel = CalculateLevelFromXP(CurrentXP);
-        if (newBaseLevel != BaseLevel)
-        {
-            LevelUpOccurredThisTick = true;
-            SetBaseLevel(newBaseLevel);
-        }
-        IsDirty = true;
+        SetCurrentXP(CurrentXP + amount);
     }
-    
+
     /// <summary>
     /// Sets the current XP to a specific amount and recalculates base level.
     /// </summary>
@@ -165,7 +161,13 @@ public class Skill
         var newBaseLevel = CalculateLevelFromXP(CurrentXP);
         if (newBaseLevel != BaseLevel)
         {
+            int delta = newBaseLevel - BaseLevel;
+
+            LevelUpOccurredThisTick = true;
             SetBaseLevel(newBaseLevel);
+
+            // Update the cur value as well
+            Modify(delta);
         }
         IsDirty = true;
     }
@@ -177,50 +179,50 @@ public class Skill
     {
         SkillData outSkillData = new SkillData()
         {
-            SkillType = Type.ToString(),
+            SkillType = (int)Type,
             BaseLevel = BaseLevel,
             CurrentLevel = CurrentValue,
             BaseXP = CurrentXP,
-            WasLevelModified = IsModified
+            WasLevelModified = LevelUpOccurredThisTick
         };
 
         // Reset the level mod flag post snapshot
         LevelUpOccurredThisTick = false;
         IsDirty = false;
-        
+
         return outSkillData;
     }
-    
+
     /// <summary>
     /// Loads XP thresholds from CSV file if not already loaded
     /// </summary>
     private static void EnsureXPThresholdsLoaded()
     {
         if (_xpThresholds != null) return;
-        
+
         lock (_xpThresholdsLock)
         {
             if (_xpThresholds != null) return;
-            
+
             LoadXPThresholds();
         }
     }
-    
+
     /// <summary>
     /// Loads XP thresholds from the CSV file
     /// </summary>
     private static void LoadXPThresholds()
     {
         var csvPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "levels", "xp_thresholds.csv");
-        
+
         if (!File.Exists(csvPath))
         {
             throw new FileNotFoundException($"XP thresholds file not found at: {csvPath}");
         }
-        
+
         var lines = File.ReadAllLines(csvPath);
         var thresholds = new List<int>();
-        
+
         foreach (var line in lines)
         {
             if (!string.IsNullOrWhiteSpace(line) && int.TryParse(line.Trim(), out var xp))
@@ -228,23 +230,23 @@ public class Skill
                 thresholds.Add(xp);
             }
         }
-        
+
         _xpThresholds = thresholds.ToArray();
         Console.WriteLine($"Loaded {_xpThresholds.Length} XP thresholds from CSV");
     }
-    
+
     /// <summary>
     /// Calculates the level for a given XP amount
     /// </summary>
     public static int CalculateLevelFromXP(int xp)
     {
         EnsureXPThresholdsLoaded();
-        
+
         if (_xpThresholds == null || _xpThresholds.Length == 0)
         {
             return 1; // Fallback to level 1
         }
-        
+
         // Find the highest level where XP >= threshold
         for (int level = _xpThresholds.Length; level >= 1; level--)
         {
@@ -254,42 +256,32 @@ public class Skill
                 return level;
             }
         }
-        
+
         return 1; // Minimum level
     }
-    
+
     /// <summary>
     /// Gets the XP amount for a specific level
     /// </summary>
     public static int GetXPForLevel(int level)
     {
         if (level < 1) return 0;
-        
+
         EnsureXPThresholdsLoaded();
-        
+
         if (_xpThresholds == null || _xpThresholds.Length == 0)
         {
             return 0; // Fallback
         }
-        
+
         var arrayIndex = level - 1; // Convert to 0-based array index
         if (arrayIndex < _xpThresholds.Length)
         {
             return _xpThresholds[arrayIndex];
         }
-        
+
         // If requesting level higher than our data, return max XP
         return _xpThresholds[_xpThresholds.Length - 1];
     }
 }
 
-/// <summary>
-/// Enum defining all available skill types in the game.
-/// </summary>
-public enum SkillType
-{
-    // Combat skills
-    HEALTH,
-    ATTACK,
-    DEFENCE
-}

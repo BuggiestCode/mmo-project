@@ -163,11 +163,11 @@ public class CombatService
     /// Executes an attack from NPC attacker to Player target.
     /// Returns true if attack was successful.
     /// </summary>
-    public bool ExecuteAttack(NPC attacker, Player target)
+    public bool ExecuteAttack(Character attacker, Character target)
     {
         if (!IsAdjacentCardinal(attacker.X, attacker.Y, target.X, target.Y))
         {
-            _logger.LogWarning($"NPC {attacker.Id} tried to attack player {target.UserId} but not adjacent (cardinal)");
+            _logger.LogWarning($"NPC {attacker.Id} tried to attack player {target.Id} but not adjacent (cardinal)");
             return false;
         }
         
@@ -185,61 +185,27 @@ public class CombatService
         _currentTickAttacks.Add(new CombatAttack
         {
             AttackerId = attacker.Id,
-            AttackerType = "NPC",
+            AttackerType = (attacker is Player) ? "Player" : "NPC",
             TargetId = target.Id,
-            TargetType = "Player",
+            TargetType = (attacker is Player) ? "NPC" : "Player",
             Damage = damage,
             TargetX = target.X,
             TargetY = target.Y
         });
-        
+
+        Player attackerAsPlayer = (Player)attacker;
+
+        if (attackerAsPlayer != null)
+        {
+            // Get Combat style bla bla
+            attacker.GetSkill(SkillType.ATTACK)?.ModifyXP(damage * 4);
+        }
+
         // Set attack cooldown
         attacker.AttackCooldownRemaining = attacker.AttackCooldown;
         attacker.IsDirty = true;
         
-        _logger.LogInformation($"NPC {attacker.Id} attacked player {target.UserId} for {damage} damage");
-        return true;
-    }
-    
-    /// <summary>
-    /// Executes an attack from Player attacker to NPC target.
-    /// Returns true if attack was successful.
-    /// </summary>
-    public bool ExecuteAttack(Player attacker, NPC target)
-    {
-        if (!IsAdjacentCardinal(attacker.X, attacker.Y, target.X, target.Y))
-        {
-            _logger.LogWarning($"Player {attacker.UserId} tried to attack NPC {target.Id} but not adjacent (cardinal)");
-            return false;
-        }
-        
-        if (attacker.AttackCooldownRemaining > 0)
-        {
-            _logger.LogDebug($"Player {attacker.UserId} attack on cooldown for {attacker.AttackCooldownRemaining} more ticks");
-            return false;
-        }
-        
-        // Calculate damage (can be expanded with attack/strength skills later)
-        var damage = CalculateDamage(attacker, target);
-        target.TakeDamage(damage);
-        
-        // Record attack for visualization and centralized tracking
-        _currentTickAttacks.Add(new CombatAttack
-        {
-            AttackerId = attacker.Id,
-            AttackerType = "Player",
-            TargetId = target.Id,
-            TargetType = "NPC",
-            Damage = damage,
-            TargetX = target.X,
-            TargetY = target.Y
-        });
-        
-        // Set attack cooldown
-        attacker.AttackCooldownRemaining = attacker.AttackCooldown;
-        attacker.IsDirty = true;
-        
-        _logger.LogInformation($"Player {attacker.UserId} attacked NPC {target.Id} for {damage} damage");
+        _logger.LogInformation($"NPC {attacker.Id} attacked player {target.Id} for {damage} damage");
         return true;
     }
     

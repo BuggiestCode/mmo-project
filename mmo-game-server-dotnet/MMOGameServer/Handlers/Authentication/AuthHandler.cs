@@ -236,8 +236,10 @@ public class AuthHandler : IMessageHandler<AuthMessage>
         // Spawn player on chunk (redundant for soft reconnect but whatever)
         _terrain.UpdatePlayerChunk(client.Player, client.Player.X, client.Player.Y);
 
+        List<SkillData> skillSnapshots = client.Player.GetSkillsSnapshot(true);
+
         // Build spawn message
-        var spawnMessage = new
+            var spawnMessage = new
         {
             type = "spawnPlayer",
             player = new PlayerFullData()
@@ -257,6 +259,9 @@ public class AuthHandler : IMessageHandler<AuthMessage>
                 Health = client.Player.CurrentHealth,
                 MaxHealth = client.Player.MaxHealth
             },
+
+            playerSkills = skillSnapshots,
+
             characterCreatorCompleted = client.Player.CharacterCreatorCompleted
         };
         
