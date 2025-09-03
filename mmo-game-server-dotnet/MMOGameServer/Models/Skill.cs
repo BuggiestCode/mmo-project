@@ -28,6 +28,11 @@ public class Skill
 
     public bool IsDirty { get; private set; } = false;
     public bool LevelUpOccurredThisTick { get; private set; }
+    
+    /// <summary>
+    /// Counter for regeneration ticks (increments each game tick)
+    /// </summary>
+    public int RegenCounter { get; set; } = 0;
 
     /// <summary>
     /// The maximum value this skill can be boosted to (typically base level + some percentage).
@@ -92,11 +97,16 @@ public class Skill
     /// Modifies the current value by a relative amount.
     /// Positive values buff, negative values debuff.
     /// </summary>
-    public int Modify(int amount)
+    public int Modify(int amount, bool resetRegen = true)
     {
         var oldValue = CurrentValue;
         CurrentValue = Math.Clamp(CurrentValue + amount, MinValue, MaxValue);
 
+        // Reset regen counter when skill is modified (e.g., taking damage or getting buffed)
+        if (resetRegen)
+        {
+            RegenCounter = 0;
+        }
         IsDirty = true;
 
         return CurrentValue - oldValue; // Return actual change
@@ -108,6 +118,7 @@ public class Skill
     public void SetCurrentValue(int value)
     {
         CurrentValue = Math.Clamp(value, MinValue, MaxValue);
+        RegenCounter = 0; // Reset regen counter when setting value directly
         IsDirty = true;
     }
 
@@ -167,7 +178,7 @@ public class Skill
             SetBaseLevel(newBaseLevel);
 
             // Update the cur value as well
-            Modify(delta);
+            Modify(delta, false);
         }
         IsDirty = true;
     }

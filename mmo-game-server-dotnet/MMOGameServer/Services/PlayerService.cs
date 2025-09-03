@@ -236,15 +236,15 @@ public class PlayerService
     }
     
     /// <summary>
-    /// Process health regeneration for all active players.
+    /// Process skill regeneration for all active players.
     /// </summary>
-    public void ProcessHealthRegeneration()
+    public void ProcessSkillRegeneration()
     {
         var activePlayers = GetActivePlayers();
         
         foreach (var player in activePlayers)
         {
-            player.ProcessHealthRegeneration();
+            player.ProcessSkillRegeneration();
         }
     }
 }

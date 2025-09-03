@@ -140,13 +140,13 @@ public class GameLoopService : BackgroundService
         // Process player health regeneration
         if (_playerService != null)
         {
-            _playerService.ProcessHealthRegeneration();
+            _playerService.ProcessSkillRegeneration();
         }
         
         // Process NPC health regeneration
         if (_npcService != null)
         {
-            _npcService.ProcessHealthRegeneration();
+            _npcService.ProcessSkillRegeneration();
         }
 
         // === POST-COMBAT CLEANUP ===

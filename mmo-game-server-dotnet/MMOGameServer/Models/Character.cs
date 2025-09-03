@@ -45,9 +45,8 @@ public abstract class Character
     public int AttackCooldownRemaining { get; set; }
     public abstract int AttackCooldown { get; }
     
-    // Health regeneration properties
-    public int HealthRegenCounter { get; set; } = 0;
-    public virtual int HealthRegenTicks => 10; // Default: regenerate every 10 ticks (5 seconds)
+    // Skill regeneration properties
+    public virtual int SkillRegenTicks => 10; // Default: regenerate every 10 ticks (5 seconds)
     
     // Damage tracking for visualization
     public List<int> DamageTakenThisTick { get; private set; } = new();
@@ -58,10 +57,7 @@ public abstract class Character
         DamageTakenThisTick.Add(amount);
         IsDirty = true;
         
-        // Reset health regeneration counter when taking damage
-        HealthRegenCounter = 0;
-        
-        // Apply damage to health skill
+        // Apply damage to health skill (regen counter is reset in Skill.Modify)
         if (HealthSkill != null)
         {
             var actualDamage = HealthSkill.Modify(-amount);
@@ -353,32 +349,36 @@ public abstract class Character
     }
     
     /// <summary>
-    /// Processes health regeneration for this character
+    /// Processes skill regeneration for all skills
     /// </summary>
-    public void ProcessHealthRegeneration()
+    public void ProcessSkillRegeneration()
     {
-        // Only process if alive and health skill exists
-        if (!IsAlive || HealthSkill == null) return;
+        // Only process if alive
+        if (!IsAlive) return;
         
-        // Increment the regen counter
-        HealthRegenCounter++;
-        
-        // Check if it's time to regenerate
-        if (HealthRegenCounter >= HealthRegenTicks)
+        // Process regeneration for all skills
+        foreach (var skill in Skills.Values)
         {
-            // Reset counter
-            HealthRegenCounter = 0;
+            // Increment the skill's regen counter
+            skill.RegenCounter++;
             
-            // Handle normal regeneration (cur < max)
-            if (CurrentHealth < MaxHealth)
+            // Check if it's time to regenerate this skill
+            if (skill.RegenCounter >= SkillRegenTicks)
             {
-                Heal(1);
-            }
-            // Handle overheal tick down (cur > max)
-            else if (CurrentHealth > MaxHealth)
-            {
-                HealthSkill.Modify(-1);
-                IsDirty = true;
+                // Reset counter
+                skill.RegenCounter = 0;
+                
+                // Handle regeneration toward base level
+                if (skill.CurrentValue < skill.BaseLevel)
+                {
+                    // Regenerate up toward base
+                    skill.Modify(1);
+                }
+                else if (skill.CurrentValue > skill.BaseLevel)
+                {
+                    // Degenerate down toward base
+                    skill.Modify(-1);
+                }
             }
         }
     }

@@ -965,15 +965,15 @@ public class NPCService
     }
     
     /// <summary>
-    /// Process health regeneration for all active NPCs.
+    /// Process skill regeneration for all active NPCs.
     /// </summary>
-    public void ProcessHealthRegeneration()
+    public void ProcessSkillRegeneration()
     {
         var activeNpcs = GetActiveNPCs();
         
         foreach (var npc in activeNpcs)
         {
-            npc.ProcessHealthRegeneration();
+            npc.ProcessSkillRegeneration();
         }
     }
     
