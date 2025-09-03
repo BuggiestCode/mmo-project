@@ -140,7 +140,7 @@ public class DatabaseService
     {
         // Load Health skill (columns 12, 13)
         var healthCurLevel = reader.IsDBNull(12) ? 10 : reader.GetInt16(12);
-        var healthXP = reader.IsDBNull(13) ? 1822 : reader.GetInt32(13);
+        var healthXP = reader.IsDBNull(13) ? Skill.GetXPForLevel(Player.StartHealthLevel) : reader.GetInt32(13);
         player.InitializeSkillFromXP(SkillType.HEALTH, healthXP, healthCurLevel);
         
         // Load Attack skill (columns 14, 15)
@@ -403,7 +403,7 @@ public class DatabaseService
             
             // Health skill
             cmd.Parameters.AddWithValue("healthCurLevel", (short)healthCurLevel);
-            cmd.Parameters.AddWithValue("healthXP", healthSkill?.CurrentXP ?? 1822);
+            cmd.Parameters.AddWithValue("healthXP", healthSkill?.CurrentXP ?? Skill.GetXPForLevel(Player.StartHealthLevel));
             
             // Attack skill
             cmd.Parameters.AddWithValue("attackCurLevel", (short)(attackSkill?.CurrentValue ?? 1));
@@ -414,7 +414,7 @@ public class DatabaseService
             cmd.Parameters.AddWithValue("defenceXP", defenceSkill?.CurrentXP ?? 0);
 
             await cmd.ExecuteNonQueryAsync();
-            Console.WriteLine($"Saved complete player {player.UserId} state - Pos: ({player.X}, {player.Y}), Health: {healthCurLevel} ({healthSkill?.CurrentXP ?? 1822} XP)");
+            Console.WriteLine($"Saved complete player {player.UserId} state - Pos: ({player.X}, {player.Y}), Health: {healthCurLevel} ({healthSkill?.CurrentXP} XP)");
         }
         catch (Exception ex)
         {
