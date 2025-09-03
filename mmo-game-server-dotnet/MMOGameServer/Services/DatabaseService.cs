@@ -95,6 +95,8 @@ public class DatabaseService
             return player;
         }
 
+        int startHealthXP = Skill.GetXPForLevel(Player.StartHealthLevel);
+
         // Create new player
         await reader.CloseAsync();
         using var insertCmd = new NpgsqlCommand(
@@ -122,7 +124,10 @@ public class DatabaseService
         // Character creator is not completed by default
         Player newPlayer = new Player(userId, 0, 0);
         newPlayer.CharacterCreatorCompleted = false;
-        // Look attributes default to 0 (already set by default in Player class)
+
+        newPlayer.InitializeSkillFromXP(SkillType.HEALTH, startHealthXP, Player.StartHealthLevel);
+        newPlayer.InitializeSkillFromXP(SkillType.ATTACK, 0, 1);
+        newPlayer.InitializeSkillFromXP(SkillType.DEFENCE, 0, 1);
 
         return newPlayer;
     }
@@ -136,17 +141,17 @@ public class DatabaseService
         // Load Health skill (columns 12, 13)
         var healthCurLevel = reader.IsDBNull(12) ? 10 : reader.GetInt16(12);
         var healthXP = reader.IsDBNull(13) ? 1822 : reader.GetInt32(13);
-        player.InitializeSkillFromXP(SkillType.Health, healthXP, healthCurLevel);
+        player.InitializeSkillFromXP(SkillType.HEALTH, healthXP, healthCurLevel);
         
         // Load Attack skill (columns 14, 15)
         var attackCurLevel = reader.IsDBNull(14) ? 1 : reader.GetInt16(14);
         var attackXP = reader.IsDBNull(15) ? 0 : reader.GetInt32(15);
-        player.InitializeSkillFromXP(SkillType.Attack, attackXP, attackCurLevel);
+        player.InitializeSkillFromXP(SkillType.ATTACK, attackXP, attackCurLevel);
         
         // Load Defence skill (columns 16, 17)
         var defenceCurLevel = reader.IsDBNull(16) ? 1 : reader.GetInt16(16);
         var defenceXP = reader.IsDBNull(17) ? 0 : reader.GetInt32(17);
-        player.InitializeSkillFromXP(SkillType.Defence, defenceXP, defenceCurLevel);
+        player.InitializeSkillFromXP(SkillType.DEFENCE, defenceXP, defenceCurLevel);
         
         Console.WriteLine($"Loaded skills - Health: {healthCurLevel} (XP: {healthXP}), Attack: {attackCurLevel} (XP: {attackXP}), Defence: {defenceCurLevel} (XP: {defenceXP})");
     }
@@ -376,9 +381,9 @@ public class DatabaseService
             await conn.OpenAsync();
 
             // Handle special cases for respawn states - save appropriate health values
-            var healthSkill = player.GetSkill(SkillType.Health);
-            var attackSkill = player.GetSkill(SkillType.Attack);
-            var defenceSkill = player.GetSkill(SkillType.Defence);
+            var healthSkill = player.GetSkill(SkillType.HEALTH);
+            var attackSkill = player.GetSkill(SkillType.ATTACK);
+            var defenceSkill = player.GetSkill(SkillType.DEFENCE);
 
             // For health: if player is awaiting respawn, save base health not current (which might be 0)
             var healthCurLevel = player.IsAwaitingRespawn && healthSkill != null ? healthSkill.BaseLevel : (healthSkill?.CurrentValue ?? 10);

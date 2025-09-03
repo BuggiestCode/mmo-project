@@ -51,13 +51,13 @@ public class NPC : Character
         switch (Type)
         {
             case "goblin":
-                InitializeSkill(SkillType.Health, 5);
+                InitializeSkill(SkillType.HEALTH, 5);
                 break;
             case "guard":
-                InitializeSkill(SkillType.Health, 20);
+                InitializeSkill(SkillType.HEALTH, 20);
                 break;
             default:
-                InitializeSkill(SkillType.Health, 8); // Default NPC health
+                InitializeSkill(SkillType.HEALTH, 8); // Default NPC health
                 break;
         }
     }

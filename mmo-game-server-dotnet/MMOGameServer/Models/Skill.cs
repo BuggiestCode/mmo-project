@@ -6,13 +6,13 @@ namespace MMOGameServer.Models;
 /// </summary>
 public class Skill
 {
-    private static long[]? _xpThresholds;
+    private static int[]? _xpThresholds;
     private static readonly object _xpThresholdsLock = new object();
     
     public SkillType Type { get; }
     public int BaseLevel { get; private set; }
     public int CurrentValue { get; private set; }
-    public long CurrentXP { get; private set; }
+    public int CurrentXP { get; private set; }
     
     /// <summary>
     /// The maximum value this skill can be boosted to (typically base level + some percentage).
@@ -51,7 +51,7 @@ public class Skill
     /// <summary>
     /// Creates a skill from XP amount - calculates the base level from XP
     /// </summary>
-    public Skill(SkillType type, long xp, int currentValue)
+    public Skill(SkillType type, int xp, int currentValue)
     {
         Type = type;
         CurrentXP = Math.Max(0, Math.Min(xp, 1_000_000_000)); // Clamp between 0 and 1 billion
@@ -130,7 +130,7 @@ public class Skill
     /// <summary>
     /// Modifies the current XP by a relative amount and recalculates base level if needed.
     /// </summary>
-    public long ModifyXP(long amount)
+    public int ModifyXP(int amount)
     {
         var oldXP = CurrentXP;
         CurrentXP = Math.Max(0, Math.Min(CurrentXP + amount, 1_000_000_000));
@@ -148,7 +148,7 @@ public class Skill
     /// <summary>
     /// Sets the current XP to a specific amount and recalculates base level.
     /// </summary>
-    public void SetCurrentXP(long xp)
+    public void SetCurrentXP(int xp)
     {
         CurrentXP = Math.Max(0, Math.Min(xp, 1_000_000_000));
         var newBaseLevel = CalculateLevelFromXP(CurrentXP);
@@ -201,11 +201,11 @@ public class Skill
         }
         
         var lines = File.ReadAllLines(csvPath);
-        var thresholds = new List<long>();
+        var thresholds = new List<int>();
         
         foreach (var line in lines)
         {
-            if (!string.IsNullOrWhiteSpace(line) && long.TryParse(line.Trim(), out var xp))
+            if (!string.IsNullOrWhiteSpace(line) && int.TryParse(line.Trim(), out var xp))
             {
                 thresholds.Add(xp);
             }
@@ -218,7 +218,7 @@ public class Skill
     /// <summary>
     /// Calculates the level for a given XP amount
     /// </summary>
-    private static int CalculateLevelFromXP(long xp)
+    public static int CalculateLevelFromXP(int xp)
     {
         EnsureXPThresholdsLoaded();
         
@@ -243,7 +243,7 @@ public class Skill
     /// <summary>
     /// Gets the XP amount for a specific level
     /// </summary>
-    private static long GetXPForLevel(int level)
+    public static int GetXPForLevel(int level)
     {
         if (level < 1) return 0;
         
@@ -271,7 +271,7 @@ public class Skill
 public enum SkillType
 {
     // Combat skills
-    Health,
-    Attack,
-    Defence
+    HEALTH,
+    ATTACK,
+    DEFENCE
 }

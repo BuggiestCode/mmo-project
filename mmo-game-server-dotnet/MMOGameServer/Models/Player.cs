@@ -39,6 +39,8 @@ public class Player : Character
     public HashSet<string> VisibilityChunks { get; set; } = new();
     public HashSet<int> VisibleNPCs { get; set; } = new();
 
+    public static int StartHealthLevel = 10;
+
     public Player(int userId, int x = 0, int y = 0)
     {
         UserId = userId;
@@ -49,7 +51,7 @@ public class Player : Character
         DoNetworkHeartbeat = false;
 
         // Initialize skills
-        InitializeSkill(SkillType.Health, 10); // Start with 10 HP
+        InitializeSkill(SkillType.HEALTH, 10); // Start with 10 HP
     }
 
     // Override to add logging

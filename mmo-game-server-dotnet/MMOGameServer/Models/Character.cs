@@ -17,7 +17,7 @@ public abstract class Character
     protected Dictionary<SkillType, Skill> Skills { get; set; } = new();
     
     // Quick accessors for common skills
-    public Skill? HealthSkill => Skills.GetValueOrDefault(SkillType.Health);
+    public Skill? HealthSkill => Skills.GetValueOrDefault(SkillType.HEALTH);
     public int CurrentHealth => HealthSkill?.CurrentValue ?? 0;
     public int MaxHealth => HealthSkill?.BaseLevel ?? 0;
     
@@ -299,7 +299,7 @@ public abstract class Character
     /// <summary>
     /// Initializes a skill from XP and current value (for database loading)
     /// </summary>
-    public void InitializeSkillFromXP(SkillType type, long xp, int currentValue)
+    public void InitializeSkillFromXP(SkillType type, int xp, int currentValue)
     {
         Skills[type] = new Skill(type, xp, currentValue);
     }

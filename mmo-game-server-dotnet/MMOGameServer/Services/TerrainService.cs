@@ -101,9 +101,6 @@ public class TerrainService
         // Calculate new visibility chunks
         var newVisibilityChunks = CalculateVisibilityChunks(worldX, worldY);
         
-        // Debug: log what chunks we think should be visible
-        //_logger.LogInformation($"Player {player.UserId} at ({worldX:F1},{worldY:F1}) should see chunks: [{string.Join(", ", newVisibilityChunks)}]");
-        
         // Ensure all visibility chunks are loaded
         EnsureChunksLoaded(newVisibilityChunks);
         
