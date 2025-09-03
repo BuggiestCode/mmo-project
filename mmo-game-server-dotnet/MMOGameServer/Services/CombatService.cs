@@ -1,4 +1,5 @@
 using MMOGameServer.Models;
+using MMOGameServer.Models.Snapshots;
 
 namespace MMOGameServer.Services;
 
@@ -18,7 +19,10 @@ public class CombatService
     private readonly TerrainService _terrainService;
     private readonly ILogger<CombatService> _logger;
     private readonly List<CombatAttack> _currentTickAttacks = new();
-    
+
+    // Use a shared RNG for combat
+    private static readonly Random Rng = Random.Shared;
+        
     public CombatService(TerrainService terrainService, ILogger<CombatService> logger)
     {
         _terrainService = terrainService;
@@ -256,20 +260,17 @@ public class CombatService
     /// </summary>
     private int CalculateDamage(Character attacker, Character target)
     {
-        // Base damage calculation
-        //var baseDamage = 1;
-        
-        // Future: Add attack/strength modifiers from attacker
-        // var attackLevel = attacker.GetSkill(SkillType.Attack)?.CurrentValue ?? 1;
-        // var strengthLevel = attacker.GetSkill(SkillType.Strength)?.CurrentValue ?? 1;
-        
-        // Future: Add defence reduction from target
-        // var defenceLevel = target.GetSkill(SkillType.Defence)?.CurrentValue ?? 1;
-        
-        // For now, simple random damage between 0-3
-        var random = new Random();
-        var damage = random.Next(0, 4);
-        
-        return damage;
+        // Pull skills safely; default to 1 if missing
+        var atkSkill = attacker.GetSkill(SkillType.ATTACK);
+        var defSkill = target.GetSkill(SkillType.DEFENCE);
+
+        int atk = atkSkill?.CurrentValue ?? 1;
+        int def = defSkill?.CurrentValue ?? 1;
+
+        // Simple opposing roll damage calc for now.
+        int attRoll = Rng.Next(0, atk + 1);
+        int defRoll = Rng.Next(0, def + 1);
+
+        return Math.Max(0, attRoll - defRoll);
     }
 }
