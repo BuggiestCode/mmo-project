@@ -34,16 +34,34 @@ public class CombatService
     /// Prioritizes the longer axis and uses deterministic tiebreaking (North/South over East/West).
     /// This creates natural diagonal movement patterns that resemble OSRS pathfinding.
     /// </summary>
-    public (int x, int y)? GetGreedyStep(int fromX, int fromY, int toX, int toY)
+    public (int x, int y)? GetGreedyStep(NPC npc, int toX, int toY)
     {
-        var currentX = fromX;
-        var currentY = fromY;
+        var currentX = npc.X;
+        var currentY = npc.Y;
         var targetX = toX;
         var targetY = toY;
         
-        // Already at target
+        // If on top of target, find first free adjacent tile
         if (currentX == targetX && currentY == targetY)
         {
+            // Try cardinal directions in order: North, East, South, West
+            var cardinalMoves = new[]
+            {
+                (currentX, currentY - 1), // North
+                (currentX + 1, currentY), // East
+                (currentX, currentY + 1), // South
+                (currentX - 1, currentY)  // West
+            };
+            
+            foreach (var (newX, newY) in cardinalMoves)
+            {
+                if (_terrainService.ValidateMovement(newX, newY) && npc.Zone.ContainsPoint(newX, newY))
+                {
+                    return (newX, newY);
+                }
+            }
+            
+            // No valid adjacent tile found, stay in place
             return null;
         }
         
@@ -136,22 +154,6 @@ public class CombatService
     }
     
     /// <summary>
-    /// Gets the best greedy move to stay adjacent to a moving target.
-    /// Used when target is moving away at end of tick.
-    /// </summary>
-    public (int x, int y)? GetFollowMove(int fromX, int fromY, int targetCurrentX, int targetCurrentY, int targetNextX, int targetNextY)
-    {
-        // If target isn't actually moving, no need to follow
-        if (targetCurrentX == targetNextX && targetCurrentY == targetNextY)
-        {
-            return null;
-        }
-        
-        // Try to move to a position adjacent to target's next position
-        return GetGreedyStep(fromX, fromY, targetNextX, targetNextY);
-    }
-    
-    /// <summary>
     /// Calculates if a position is within a given range of another position.
     /// Used for aggro range checks.
     /// </summary>
@@ -160,6 +162,7 @@ public class CombatService
         var dx = x1 - x2;
         var dy = y1 - y2;
         var distance = MathF.Sqrt(dx * dx + dy * dy);
+
         return distance <= range;
     }
     
@@ -169,7 +172,8 @@ public class CombatService
     /// </summary>
     public bool ExecuteAttack(Character attacker, Character target)
     {
-        if (!IsAdjacentCardinal(attacker.X, attacker.Y, target.X, target.Y))
+
+        if (!IsWithinRange(attacker.X, attacker.Y, target.X, target.Y, 2)) //IsAdjacentCardinal() replaced with att range of 2 by default
         {
             _logger.LogWarning($"NPC {attacker.Id} tried to attack player {target.Id} but not adjacent (cardinal)");
             return false;

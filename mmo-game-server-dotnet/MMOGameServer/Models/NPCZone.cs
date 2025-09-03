@@ -60,9 +60,9 @@ public class NPCZone
         return chunks;
     }
     
-    public bool ContainsPoint(float x, float y)
+    public bool ContainsPoint(float x, float y, int border = 0)
     {
-        return x >= MinX && x <= MaxX && y >= MinY && y <= MaxY;
+        return x >= (MinX - border) && x <= (MaxX + border) && y >= (MinY - border) && y <= (MaxY + border);
     }
     
     public (int x, int y) GetRandomSpawnPoint(Random random)

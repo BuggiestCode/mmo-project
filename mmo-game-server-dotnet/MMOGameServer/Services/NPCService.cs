@@ -186,7 +186,7 @@ public class NPCService
                     _combatService.IsWithinRange(npc.X, npc.Y, client.Player.X, client.Player.Y, npc.AggroRange))
                 {
                     // Check if player is within the NPC's zone - only aggro if they are
-                    if (npc.Zone.ContainsPoint(client.Player.X, client.Player.Y))
+                    if (npc.Zone.ContainsPoint(client.Player.X, client.Player.Y, 1))
                     {
                         // Acquire target
                         npc.SetTarget(client.Player);
@@ -215,7 +215,7 @@ public class NPCService
             // If not adjacent, take greedy step toward target
             if (!_combatService.IsAdjacentCardinal(npc.X, npc.Y, targetX, targetY))
             {
-                var greedyStep = _combatService.GetGreedyStep(npc.X, npc.Y, targetX, targetY);
+                var greedyStep = _combatService.GetGreedyStep(npc, targetX, targetY);
                 if (greedyStep.HasValue)
                 {
                     // Check if move would take us out of zone
@@ -263,9 +263,18 @@ public class NPCService
         {
             return;
         }
-        
-        // Check if adjacent and can attack
-        if (_combatService.IsAdjacentCardinal(npc.X, npc.Y, npc.TargetCharacter.X, npc.TargetCharacter.Y))
+
+        int x1 = npc.X;
+        int y1 = npc.Y;
+        int x2 = npc.TargetCharacter.X;
+        int y2 = npc.TargetCharacter.Y;
+
+        var dx = x1 - x2;
+        var dy = y1 - y2;
+        var distance = MathF.Sqrt(dx * dx + dy * dy);
+
+        // Check if in range and can attack
+        if (_combatService.IsWithinRange(npc.X, npc.Y, npc.TargetCharacter.X, npc.TargetCharacter.Y, 2))
         {
             if (npc.AttackCooldownRemaining == 0)
             {
@@ -277,7 +286,7 @@ public class NPCService
                 // In future, add NPC vs NPC combat here
             }
         }
-        
+    
         await Task.CompletedTask;
         }
         catch (Exception ex)
