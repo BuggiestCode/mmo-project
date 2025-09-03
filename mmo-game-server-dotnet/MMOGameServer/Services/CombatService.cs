@@ -197,16 +197,20 @@ public class CombatService
             TargetY = target.Y
         });
 
-        Player attackerAsPlayer = (Player)attacker;
-
-        if (attackerAsPlayer != null)
+        if (attacker is Player)
         {
-            // Get Combat style bla bla
-            attacker.GetSkill(SkillType.ATTACK)?.ModifyXP(damage * 4);
+            Player attackerAsPlayer = (Player)attacker;
+
+            if (attackerAsPlayer != null)
+            {
+                // Get Combat style bla bla
+                attacker.GetSkill(SkillType.ATTACK)?.ModifyXP(damage * 4);
+                attacker.GetSkill(SkillType.HEALTH)?.ModifyXP(damage);
+            }
         }
 
         // Set attack cooldown
-        attacker.AttackCooldownRemaining = attacker.AttackCooldown;
+            attacker.AttackCooldownRemaining = attacker.AttackCooldown;
         attacker.IsDirty = true;
         
         _logger.LogInformation($"NPC {attacker.Id} attacked player {target.Id} for {damage} damage");
