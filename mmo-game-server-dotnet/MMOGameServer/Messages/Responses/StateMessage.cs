@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using MMOGameServer.Models.Snapshots;
 
 namespace MMOGameServer.Messages.Responses;
 
@@ -10,6 +11,10 @@ public class StateMessage
     [JsonPropertyName("selfStateUpdate")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public object? SelfStateUpdate { get; set; }
+
+    [JsonPropertyName("selfSkillModifications")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IList<SkillData>? SelfSkillModifications{ get; set; }
     
     [JsonPropertyName("players")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

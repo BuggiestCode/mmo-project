@@ -1,4 +1,5 @@
 namespace MMOGameServer.Models;
+using MMOGameServer.Models.Snapshots;
 
 public enum CombatState
 {
@@ -89,12 +90,13 @@ public abstract class Character
             .Take(maxCount)
             .ToList();
     }
-    
+
     public void EndTick()
     {
         // Move this tick's damage to last tick for future reference
         DamageTakenLastTick = new List<int>(DamageTakenThisTick);
         DamageTakenThisTick.Clear();
+        IsDirty = false;
     }
     
     public bool TookDamageLastTick => DamageTakenLastTick.Any();
@@ -332,17 +334,21 @@ public abstract class Character
         HealthSkill?.Recharge();
         IsDirty = true;
     }
-    
+
     /// <summary>
     /// Gets a snapshot of all skills for network sync
     /// </summary>
-    public Dictionary<string, object> GetSkillsSnapshot()
+    public List<SkillData> GetSkillsSnapshot()
     {
-        var snapshot = new Dictionary<string, object>();
-        foreach (var skill in Skills.Values)
+        var snapshot = new List<SkillData>();
+        foreach (Skill skill in Skills.Values)
         {
-            snapshot[skill.Type.ToString().ToLower()] = skill.GetSnapshot();
+            if (skill.IsDirty)
+            {
+                snapshot.Add(skill.GetSnapshot());
+            }
         }
+
         return snapshot;
     }
     

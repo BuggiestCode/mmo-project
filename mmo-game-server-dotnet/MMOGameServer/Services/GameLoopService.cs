@@ -158,7 +158,6 @@ public class GameLoopService : BackgroundService
             if (client.Player?.IsDirty == true)
             {
                 allPlayerSnapshots[client.Player.UserId] = client.Player.GetSnapshot();
-                client.Player.IsDirty = false;
             }
         }
 
@@ -170,7 +169,6 @@ public class GameLoopService : BackgroundService
             foreach (var npc in dirtyNpcs)
             {
                 allNpcSnapshots[npc.Id] = npc.GetSnapshot();
-                npc.IsDirty = false;
             }
         }
         
@@ -211,6 +209,9 @@ public class GameLoopService : BackgroundService
             {
                 selfUpdate = allPlayerSnapshots[playerId];
             }
+
+            // Get the possibly modified skills
+            List<SkillData> selfModifiedSkills = client.Player.GetSkillsSnapshot();
             
             // Filter snapshots to only include OTHER visible players (exclude self)
             var visiblePlayerSnapshots = allPlayerSnapshots
@@ -225,7 +226,7 @@ public class GameLoopService : BackgroundService
                 .ToList();
             
             // Only send update if there are changes
-            if (selfUpdate != null || visiblePlayerSnapshots.Any() || visibleNpcSnapshots.Any() || 
+            if (selfUpdate != null || selfModifiedSkills.Any() || visiblePlayerSnapshots.Any() || visibleNpcSnapshots.Any() || 
                 hasVisibilityChanges || newlyVisibleNpcs.Any() || noLongerVisibleNpcs.Any())
             {
                 // Get the full player data for newly visible players
@@ -243,6 +244,7 @@ public class GameLoopService : BackgroundService
                 var personalizedUpdate = new StateMessage
                 {
                     SelfStateUpdate = selfUpdate,
+                    SelfSkillModifications = selfModifiedSkills.Any() ? selfModifiedSkills : null,
                     Players = visiblePlayerSnapshots.Any() ? visiblePlayerSnapshots : null,
                     Npcs = visibleNpcSnapshots.Any() ? visibleNpcSnapshots : null,
                     ClientsToLoad = clientsToLoad?.Cast<object>().ToList(),

@@ -1,4 +1,5 @@
 namespace MMOGameServer.Models;
+using MMOGameServer.Models.Snapshots;
 
 /// <summary>
 /// Represents a skill in the OSRS-style skill system.
@@ -13,6 +14,9 @@ public class Skill
     public int BaseLevel { get; private set; }
     public int CurrentValue { get; private set; }
     public int CurrentXP { get; private set; }
+
+    public bool IsDirty { get; private set; } = false;
+    public bool LevelUpOccurredThisTick { get; private set; }
     
     /// <summary>
     /// The maximum value this skill can be boosted to (typically base level + some percentage).
@@ -58,7 +62,7 @@ public class Skill
         BaseLevel = CalculateLevelFromXP(CurrentXP);
         CurrentValue = Math.Clamp(currentValue, MinValue, MaxValue);
     }
-    
+
     /// <summary>
     /// Sets the base level of the skill (permanent progression).
     /// Also updates current value if it exceeds new limits.
@@ -66,14 +70,16 @@ public class Skill
     public void SetBaseLevel(int level)
     {
         if (level < 1) level = 1;
-        
+
         BaseLevel = level;
-        
+
         // Ensure current value stays within new bounds
         if (CurrentValue > MaxValue)
         {
             CurrentValue = MaxValue;
         }
+
+        IsDirty = true;
     }
     
     /// <summary>
@@ -84,6 +90,9 @@ public class Skill
     {
         var oldValue = CurrentValue;
         CurrentValue = Math.Clamp(CurrentValue + amount, MinValue, MaxValue);
+
+        IsDirty = true;
+        
         return CurrentValue - oldValue; // Return actual change
     }
     
@@ -93,6 +102,7 @@ public class Skill
     public void SetCurrentValue(int value)
     {
         CurrentValue = Math.Clamp(value, MinValue, MaxValue);
+        IsDirty = true;
     }
     
     /// <summary>
@@ -116,6 +126,7 @@ public class Skill
             // Restore debuff toward base
             CurrentValue = Math.Min(BaseLevel, CurrentValue + amount);
         }
+        IsDirty = true;
     }
     
     /// <summary>
@@ -130,7 +141,7 @@ public class Skill
     /// <summary>
     /// Modifies the current XP by a relative amount and recalculates base level if needed.
     /// </summary>
-    public int ModifyXP(int amount)
+    public void ModifyXP(int amount)
     {
         var oldXP = CurrentXP;
         CurrentXP = Math.Max(0, Math.Min(CurrentXP + amount, 1_000_000_000));
@@ -139,10 +150,10 @@ public class Skill
         var newBaseLevel = CalculateLevelFromXP(CurrentXP);
         if (newBaseLevel != BaseLevel)
         {
+            LevelUpOccurredThisTick = true;
             SetBaseLevel(newBaseLevel);
         }
-        
-        return CurrentXP - oldXP; // Return actual change
+        IsDirty = true;
     }
     
     /// <summary>
@@ -156,21 +167,28 @@ public class Skill
         {
             SetBaseLevel(newBaseLevel);
         }
+        IsDirty = true;
     }
-    
+
     /// <summary>
     /// Gets a snapshot for network synchronization.
     /// </summary>
-    public object GetSnapshot()
+    public SkillData GetSnapshot()
     {
-        return new
+        SkillData outSkillData = new SkillData()
         {
-            type = Type.ToString(),
-            baseLevel = BaseLevel,
-            currentValue = CurrentValue,
-            currentXP = CurrentXP,
-            isModified = IsModified
+            SkillType = Type.ToString(),
+            BaseLevel = BaseLevel,
+            CurrentLevel = CurrentValue,
+            BaseXP = CurrentXP,
+            WasLevelModified = IsModified
         };
+
+        // Reset the level mod flag post snapshot
+        LevelUpOccurredThisTick = false;
+        IsDirty = false;
+        
+        return outSkillData;
     }
     
     /// <summary>
