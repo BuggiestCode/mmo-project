@@ -305,31 +305,31 @@ public class NPCService
         {
             _logger.LogInformation($"NPC {npc.Id} (type: {npc.Type}) has died at ({npc.X}, {npc.Y})");
         
-        // Clear target relationships
-        npc.OnRemove();
-        
-        // Remove from global tracking
-        _allNpcs.TryRemove(npc.Id, out _);
-        
-        // Remove from chunk tracking
-        var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
-        var chunkKey = $"{chunkX},{chunkY}";
-        if (_terrainService.TryGetChunk(chunkKey, out var chunk))
-        {
-            chunk.NPCsOnChunk.Remove(npc.Id);
-        }
-        
-        // Remove from zone
-        var zone = npc.Zone;
-        zone.NPCs.Remove(npc);
-        
-        // Schedule respawn if zone is still hot
-        if (zone.IsHot)
-        {
-            var respawnTime = DateTime.UtcNow.AddSeconds(zone.NPCRespawnTimeSeconds);
-            zone.RespawnTimers[npc.Id] = respawnTime;
-            _logger.LogInformation($"NPC {npc.Id} scheduled to respawn in {zone.NPCRespawnTimeSeconds} seconds");
-        }
+            // Clear target relationships
+            npc.OnRemove();
+            
+            // Remove from global tracking
+            _allNpcs.TryRemove(npc.Id, out _);
+            
+            // Remove from chunk tracking
+            var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(npc.X, npc.Y);
+            var chunkKey = $"{chunkX},{chunkY}";
+            if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+            {
+                chunk.NPCsOnChunk.Remove(npc.Id);
+            }
+            
+            // Remove from zone
+            var zone = npc.Zone;
+            zone.NPCs.Remove(npc);
+            
+            // Schedule respawn if zone is still hot
+            if (zone.IsHot)
+            {
+                var respawnTime = DateTime.UtcNow.AddSeconds(zone.NPCRespawnTimeSeconds);
+                zone.RespawnTimers[npc.Id] = respawnTime;
+                _logger.LogInformation($"NPC {npc.Id} scheduled to respawn in {zone.NPCRespawnTimeSeconds} seconds");
+            }
         }
         catch (Exception ex)
         {

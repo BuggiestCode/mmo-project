@@ -48,8 +48,8 @@ public class NPCSnapshot
     public bool TookDamage { get; set; }
     
     // Special states
-    [JsonPropertyName("isDead")]
-    public bool IsDead { get; set; }
+    [JsonPropertyName("isAlive")]
+    public bool IsAlive { get; set; }
     
     [JsonPropertyName("teleportMove")]
     public bool TeleportMove { get; set; }

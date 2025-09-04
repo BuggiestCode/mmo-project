@@ -82,7 +82,7 @@ public class Player : Character
             Health = CurrentHealth,
             MaxHealth = MaxHealth,
             TookDamage = DamageTakenThisTick.Any(),
-            IsDead = IsAwaitingRespawn,  // Include death state for client animation
+            IsAlive = IsAlive,  // Include death state for client animation
             TeleportMove = TeleportMove  // Flag for instant position changes
         };
         

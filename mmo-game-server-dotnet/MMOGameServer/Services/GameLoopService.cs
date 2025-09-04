@@ -241,6 +241,9 @@ public class GameLoopService : BackgroundService
                     }
                 }
 
+                if (selfUpdate != null)
+                    Console.WriteLine(((PlayerSnapshot)selfUpdate).IsAlive + " " + client.Player.IsAlive);
+
                 var personalizedUpdate = new StateMessage
                 {
                     SelfStateUpdate = selfUpdate,

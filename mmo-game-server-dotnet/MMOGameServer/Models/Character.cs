@@ -13,15 +13,15 @@ public abstract class Character
     public abstract int X { get; set; }
     public abstract int Y { get; set; }
     public abstract bool IsDirty { get; set; }
-    
+
     // === SKILLS SYSTEM ===
     protected Dictionary<SkillType, Skill> Skills { get; set; } = new();
-    
+
     // Quick accessors for common skills
     public Skill? HealthSkill => Skills.GetValueOrDefault(SkillType.HEALTH);
     public int CurrentHealth => HealthSkill?.CurrentValue ?? 0;
     public int MaxHealth => HealthSkill?.BaseLevel ?? 0;
-    
+
     // === MOVEMENT STATE ===
     protected List<(int x, int y)> _currentPath = new();
     protected (int x, int y)? _nextTile;
@@ -30,16 +30,16 @@ public abstract class Character
 
     // Teleport flag for instant position changes (respawn, fast travel, etc.)
     public bool TeleportMove { get; set; } = false;
-    
+
     // === COMBAT STATE ===
     public CombatState CombatState { get; protected set; } = CombatState.Idle;
     public Character? TargetCharacter { get; protected set; }
     public HashSet<Character> TargetedBy { get; } = new();  // Who is targeting me
-    
+
     // For state messages - cached target info
     public int? CurrentTargetId { get; protected set; }
     public bool IsTargetPlayer { get; protected set; }
-    
+
     // Combat properties
     public bool IsAlive => CurrentHealth > 0;
     public int AttackCooldownRemaining { get; set; }

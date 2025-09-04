@@ -26,6 +26,12 @@ public class MoveHandler : IMessageHandler<MoveMessage>
             _logger.LogInformation($"Player {client.Player.UserId} attempted to move while dead/respawning - ignoring");
             return;
         }
+
+        // ???
+        if (client.Player.TeleportMove)
+        {
+            return;
+        }
         
         // Clear any combat target when player manually moves
         if (client.Player.TargetCharacter != null)
