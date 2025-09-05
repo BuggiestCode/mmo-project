@@ -82,6 +82,7 @@ public class NPC : Character
             X = X,
             Y = Y,
             IsMoving = IsMoving,
+            PerformedAction = PerformedAction,
             InCombat = CombatState == CombatState.InCombat,
             CurrentTargetId = CurrentTargetId ?? -1,  // -1 for no target (frontend convention)
             IsTargetPlayer = CurrentTargetId.HasValue ? IsTargetPlayer : false,  // Default to false when no target

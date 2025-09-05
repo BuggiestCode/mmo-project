@@ -28,6 +28,9 @@ public abstract class Character
     protected bool _isMoving;
     public bool IsMoving => _isMoving;
 
+    // === ACTION THIS TICK ===
+    public int PerformedAction = 0;
+
     // Teleport flag for instant position changes (respawn, fast travel, etc.)
     public bool TeleportMove { get; set; } = false;
 
@@ -93,6 +96,7 @@ public abstract class Character
         DamageTakenLastTick = new List<int>(DamageTakenThisTick);
         DamageTakenThisTick.Clear();
         IsDirty = false;
+        PerformedAction = 0;
     }
     
     public bool TookDamageLastTick => DamageTakenLastTick.Any();

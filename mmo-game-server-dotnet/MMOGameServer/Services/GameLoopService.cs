@@ -224,9 +224,10 @@ public class GameLoopService : BackgroundService
                 .Where(kvp => visibleNpcIds.Contains(kvp.Key))
                 .Select(kvp => kvp.Value)
                 .ToList();
+
             
             // Only send update if there are changes
-            if (selfUpdate != null || selfModifiedSkills.Any() || visiblePlayerSnapshots.Any() || visibleNpcSnapshots.Any() || 
+            if (selfUpdate != null || selfModifiedSkills.Any() || visiblePlayerSnapshots.Any() || visibleNpcSnapshots.Any() ||
                 hasVisibilityChanges || newlyVisibleNpcs.Any() || noLongerVisibleNpcs.Any())
             {
                 // Get the full player data for newly visible players
@@ -240,9 +241,8 @@ public class GameLoopService : BackgroundService
                         clientsToLoad = playerData;
                     }
                 }
-
-                if (selfUpdate != null)
-                    Console.WriteLine(((PlayerSnapshot)selfUpdate).IsAlive + " " + client.Player.IsAlive);
+                
+                Console.WriteLine(((PlayerSnapshot)selfUpdate)?.PerformedAction);
 
                 var personalizedUpdate = new StateMessage
                 {
@@ -261,7 +261,7 @@ public class GameLoopService : BackgroundService
                         ? noLongerVisibleNpcs.ToArray()
                         : null
                 };
-        
+
                 updateTasks.Add(client.SendMessageAsync(personalizedUpdate));
             }
         }

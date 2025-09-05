@@ -189,6 +189,9 @@ public class CombatService
         var damage = CalculateDamage(attacker, target);
         target.TakeDamage(damage);
         
+        // We have our performed action for this tick (we probably need some sort of blocking system for actions (integrated with a first action 2nd action system.))
+        attacker.PerformedAction = 1;
+        
         // Record attack for visualization and centralized tracking
         _currentTickAttacks.Add(new CombatAttack
         {
@@ -214,7 +217,7 @@ public class CombatService
         }
 
         // Set attack cooldown
-            attacker.AttackCooldownRemaining = attacker.AttackCooldown;
+        attacker.AttackCooldownRemaining = attacker.AttackCooldown;
         attacker.IsDirty = true;
         
         _logger.LogInformation($"NPC {attacker.Id} attacked player {target.Id} for {damage} damage");

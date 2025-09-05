@@ -19,6 +19,10 @@ public class PlayerSnapshot
     
     [JsonPropertyName("isMoving")]
     public bool IsMoving { get; set; }
+
+    // This is going to be really hard coded for now: (0 = none), (1 = attack) This field is to trigger anims
+    [JsonPropertyName("performedAction")]
+    public int PerformedAction { get; set; }
     
     // Combat state
     [JsonPropertyName("currentTargetId")]

@@ -39,6 +39,7 @@ public class Player : Character
     public HashSet<string> VisibilityChunks { get; set; } = new();
     public HashSet<int> VisibleNPCs { get; set; } = new();
 
+
     public static int StartHealthLevel = 10;
 
     public Player(int userId, int x = 0, int y = 0)
@@ -76,6 +77,7 @@ public class Player : Character
             X = X,
             Y = Y,
             IsMoving = IsMoving,
+            PerformedAction = PerformedAction,
             CurrentTargetId = CurrentTargetId ?? -1,  // -1 for no target (frontend convention)
             IsTargetPlayer = CurrentTargetId.HasValue ? IsTargetPlayer : false,  // Default to false when no target
             DamageSplats = damageSplats.Any() ? damageSplats : null,
