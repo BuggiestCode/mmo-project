@@ -14,5 +14,6 @@ public enum MessageType
     DisableHeartbeat,
     AdminCommand,
     SetTarget,
-    SkillUpdate
+    SkillUpdate,
+    SetAttackStyle
 }

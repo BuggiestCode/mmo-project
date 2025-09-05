@@ -242,8 +242,6 @@ public class GameLoopService : BackgroundService
                     }
                 }
                 
-                Console.WriteLine(((PlayerSnapshot)selfUpdate)?.PerformedAction);
-
                 var personalizedUpdate = new StateMessage
                 {
                     SelfStateUpdate = selfUpdate,

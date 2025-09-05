@@ -211,7 +211,7 @@ public class CombatService
             if (attackerAsPlayer != null)
             {
                 // Get Combat style bla bla
-                attacker.GetSkill(SkillType.ATTACK)?.ModifyXP(damage * 2);
+                attacker.GetSkill(attackerAsPlayer.CurrentAttackStyle == Messages.Requests.AttackStyle.Aggressive ? SkillType.ATTACK : SkillType.DEFENCE)?.ModifyXP(damage * 2);
                 attacker.GetSkill(SkillType.HEALTH)?.ModifyXP(damage);
             }
         }

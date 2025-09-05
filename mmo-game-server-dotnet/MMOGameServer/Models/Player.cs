@@ -1,3 +1,4 @@
+using MMOGameServer.Messages.Requests;
 using MMOGameServer.Models.Snapshots;
 
 namespace MMOGameServer.Models;
@@ -25,6 +26,7 @@ public class Player : Character
 
     // Combat properties
     public override int AttackCooldown => 3; // 3 ticks between attacks (1.5 seconds at 500ms tick rate)
+    public AttackStyle CurrentAttackStyle { get; set; } = AttackStyle.Aggressive; // Default to aggressive
     
     // Death/Respawn tracking
     public int RespawnTicksRemaining { get; set; } = 0;
