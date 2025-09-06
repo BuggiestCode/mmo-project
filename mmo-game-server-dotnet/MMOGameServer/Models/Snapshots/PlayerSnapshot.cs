@@ -54,4 +54,8 @@ public class PlayerSnapshot
     // Inventory (only sent when changed)
     [JsonPropertyName("inventory")]
     public int[]? Inventory { get; set; }
+    
+    // Ground items visible to this player
+    [JsonPropertyName("groundItems")]
+    public List<ChunkGroundItems>? GroundItems { get; set; }
 }

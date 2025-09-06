@@ -148,6 +148,13 @@ public class GameLoopService : BackgroundService
         {
             _npcService.ProcessSkillRegeneration();
         }
+        
+        // === GROUND ITEMS MAINTENANCE ===
+        
+        // Update ground item timers and clean up expired items
+        // Items expire after 600 ticks (5 minutes at 500ms tick rate)
+        const int maxGroundItemTicks = 600;
+        _terrainService.UpdateGroundItemTimers(maxGroundItemTicks);
 
         // === POST-COMBAT CLEANUP ===
 
@@ -225,10 +232,14 @@ public class GameLoopService : BackgroundService
                 .Select(kvp => kvp.Value)
                 .ToList();
 
+            // Get visible ground items for this player
+            var visibleGroundItems = client.Player.VisibilityChunks != null && client.Player.VisibilityChunks.Any()
+                ? _terrainService.GetVisibleGroundItems(client.Player.VisibilityChunks)
+                : null;
             
             // Only send update if there are changes
             if (selfUpdate != null || selfModifiedSkills.Any() || visiblePlayerSnapshots.Any() || visibleNpcSnapshots.Any() ||
-                hasVisibilityChanges || newlyVisibleNpcs.Any() || noLongerVisibleNpcs.Any())
+                hasVisibilityChanges || newlyVisibleNpcs.Any() || noLongerVisibleNpcs.Any() || visibleGroundItems?.Any() == true)
             {
                 // Get the full player data for newly visible players
                 List<PlayerFullData>? clientsToLoad = null;
@@ -257,7 +268,8 @@ public class GameLoopService : BackgroundService
                         : null,
                     NpcsToUnload = noLongerVisibleNpcs.Any()
                         ? noLongerVisibleNpcs.ToArray()
-                        : null
+                        : null,
+                    GroundItems = visibleGroundItems?.Any() == true ? visibleGroundItems : null
                 };
 
                 updateTasks.Add(client.SendMessageAsync(personalizedUpdate));

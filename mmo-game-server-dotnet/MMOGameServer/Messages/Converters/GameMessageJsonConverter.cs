@@ -34,6 +34,7 @@ public class GameMessageJsonConverter : JsonConverter<IGameMessage>
             "admincommand" => Deserialize<AdminCommandMessage>(root.GetRawText(), options),
             "settarget" => Deserialize<SetTargetMessage>(root.GetRawText(), options),
             "setattackstyle" => Deserialize<SetAttackStyleMessage>(root.GetRawText(), options),
+            "dropitem" => Deserialize<DropItemMessage>(root.GetRawText(), options),
             _ => throw new JsonException($"Unknown message type: {typeString}")
         };
     }

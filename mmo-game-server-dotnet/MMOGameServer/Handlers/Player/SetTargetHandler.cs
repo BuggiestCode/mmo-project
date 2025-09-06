@@ -34,10 +34,6 @@ public class SetTargetHandler : IMessageHandler<SetTargetMessage>
         if (!client.Player.IsAlive || client.Player.IsAwaitingRespawn)
         {
             _logger.LogInformation($"Player {client.Player.UserId} attempted to set target while dead/respawning - ignoring");
-            await client.SendMessageAsync(new { 
-                type = "error", 
-                message = "Cannot target while dead" 
-            });
             return;
         }
         
@@ -46,12 +42,6 @@ public class SetTargetHandler : IMessageHandler<SetTargetMessage>
         {
             client.Player.SetTarget(null);
             _logger.LogInformation($"Player {client.Player.UserId} cleared target");
-            await client.SendMessageAsync(new { 
-                type = "targetSet", 
-                success = true,
-                targetId = 0,
-                targetType = "none"
-            });
             return;
         }
         
@@ -64,10 +54,6 @@ public class SetTargetHandler : IMessageHandler<SetTargetMessage>
                 target = _npcService.GetNPC(message.TargetId);
                 if (target == null)
                 {
-                    await client.SendMessageAsync(new { 
-                        type = "error", 
-                        message = $"NPC {message.TargetId} not found" 
-                    });
                     return;
                 }
                 break;
@@ -79,10 +65,6 @@ public class SetTargetHandler : IMessageHandler<SetTargetMessage>
                     
                 if (targetClient?.Player == null)
                 {
-                    await client.SendMessageAsync(new { 
-                        type = "error", 
-                        message = $"Player {message.TargetId} not found" 
-                    });
                     return;
                 }
                 
@@ -91,30 +73,17 @@ public class SetTargetHandler : IMessageHandler<SetTargetMessage>
                 // Prevent self-targeting
                 if (target == client.Player)
                 {
-                    await client.SendMessageAsync(new { 
-                        type = "error", 
-                        message = "Cannot target yourself" 
-                    });
                     return;
                 }
                 break;
-                
+            
             case TargetType.Object:
-                // Future: Handle object targeting
-                await client.SendMessageAsync(new { 
-                    type = "error", 
-                    message = "Object targeting not yet implemented" 
-                });
                 return;
         }
         
         // Validate target is alive
         if (target != null && !target.IsAlive)
         {
-            await client.SendMessageAsync(new { 
-                type = "error", 
-                message = "Cannot target dead entities" 
-            });
             return;
         }
         
@@ -124,22 +93,17 @@ public class SetTargetHandler : IMessageHandler<SetTargetMessage>
             client.Player.SetTarget(target);
             _logger.LogInformation($"Player {client.Player.UserId} targeted {message.TargetType} {message.TargetId} for attack");
             
+            /*
             // Send confirmation
-            await client.SendMessageAsync(new { 
-                type = "targetSet", 
+            await client.SendMessageAsync(new
+            {
+                type = "targetSet",
                 success = true,
                 targetId = message.TargetId,
                 targetType = message.TargetType.ToString().ToLower(),
                 action = message.Action.ToString().ToLower()
             });
-        }
-        else
-        {
-            // Other actions not yet implemented
-            await client.SendMessageAsync(new { 
-                type = "error", 
-                message = $"Action {message.Action} not yet implemented" 
-            });
+            */
         }
     }
 }

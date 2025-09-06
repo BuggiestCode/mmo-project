@@ -31,6 +31,9 @@ public class TerrainChunk
     // NPC tracking
     public HashSet<int> NPCsOnChunk { get; set; } = new();
     
+    // Ground items tracking: Dictionary<local tile position, list of items on that tile>
+    public Dictionary<(int x, int y), List<ServerGroundItem>> GroundItems { get; set; } = new();
+    
     // Reference to NPCService for checking zone states
     private NPCService? _npcService;
     public void SetNPCService(NPCService npcService) => _npcService = npcService;

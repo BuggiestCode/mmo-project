@@ -15,5 +15,6 @@ public enum MessageType
     AdminCommand,
     SetTarget,
     SkillUpdate,
-    SetAttackStyle
+    SetAttackStyle,
+    DropItem
 }

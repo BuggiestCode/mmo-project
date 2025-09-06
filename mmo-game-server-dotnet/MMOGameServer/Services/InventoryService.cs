@@ -5,10 +5,12 @@ namespace MMOGameServer.Services;
 public class InventoryService
 {
     private readonly ILogger<InventoryService> _logger;
+    private readonly TerrainService _terrainService;
 
-    public InventoryService(ILogger<InventoryService> logger)
+    public InventoryService(ILogger<InventoryService> logger, TerrainService terrainService)
     {
         _logger = logger;
+        _terrainService = terrainService;
     }
 
     /// <summary>
@@ -183,5 +185,52 @@ public class InventoryService
         }
 
         return player.Inventory.Count(slot => slot == -1);
+    }
+
+    /// <summary>
+    /// Drops an item from the player's inventory onto the ground at their current position
+    /// </summary>
+    /// <param name="player">The player dropping the item</param>
+    /// <param name="slotIndex">The inventory slot to drop from</param>
+    /// <returns>True if the item was successfully dropped, false otherwise</returns>
+    public bool DropItem(Player player, int slotIndex)
+    {
+        if (player == null)
+        {
+            _logger.LogWarning("DropItem called with null player");
+            return false;
+        }
+
+        if (slotIndex < 0 || slotIndex >= player.Inventory.Length)
+        {
+            _logger.LogWarning($"DropItem called with invalid slot index {slotIndex} for player {player.UserId}");
+            return false;
+        }
+
+        int itemId = player.Inventory[slotIndex];
+        if (itemId == -1)
+        {
+            _logger.LogWarning($"Player {player.UserId} tried to drop from empty slot {slotIndex}");
+            return false;
+        }
+
+        // Add the item to the ground at the player's current position
+        bool dropped = _terrainService.AddGroundItem(player.X, player.Y, itemId);
+        
+        if (dropped)
+        {
+            // Remove from inventory
+            player.Inventory[slotIndex] = -1;
+            player.InventoryDirty = true;
+            player.IsDirty = true;
+            
+            _logger.LogInformation($"Player {player.UserId} dropped item {itemId} from slot {slotIndex} at ({player.X}, {player.Y})");
+            return true;
+        }
+        else
+        {
+            _logger.LogWarning($"Failed to drop item {itemId} at ({player.X}, {player.Y}) - terrain service rejected");
+            return false;
+        }
     }
 }

@@ -130,15 +130,29 @@ This is a multiplayer online game (MMO) with a distributed architecture consisti
 - Connection pooling through Npgsql
 
 
-***Current task: Basic inventory and items system ***
-
+***Current inventory system***
 - Player Inventory System: Simple array of (PlayerInventorySize) ints, -1 = empty slot then itemIDs
-- Snapshot of inventory serialized into FullPlayerSnapshot, for now we init an empty inventory of size 
+- Snapshot of inventory serialized into FullPlayerSnapshot, for now we init random values (-1, 0, 1) inventory of size 
   (PlayerInventorySize) in the Player init and parse that.
 - Player Inventory serialized into the StateMessage
 - Inventory Service that flags a player to 'SetDirty' when inventory changes: 
   (Add Item to inventory, Remove Item from inventory from inventory methods)
 
-Don't worry about any incoming message integration, we will address that later, for now let's just 
-get the Server->Client flow set up from a functioning inventory of a given size that can have the IDs changed 
-and have it propagate to the client through the initial snapshot and then state updates.
+***Current task: Basic inventory and items system ***
+Ground Items, Dropping items.
+
+- Drop Item from inventory method
+- GroundItems architecture on Server side transifer Chunk object, when an item is dropped on a given tile, it is 
+  added to the ground Items: simple (Dictionary<Vector2Int(LocalChunkTileCoord), int[](itemIDs on tile)>())
+- GroundItems are then serialized int the StateMessage based on "visible" chunks for a given 
+  client in the GameLoopService -> sent to player as Chunk->Tile->ListOfIDs using this class structure:
+    List<ChunkGroundItems>()
+    {
+      Vector2DInt ChunkCoord
+      List<GroundTileStack>()
+      {
+        Vector2Int LocalTilePosOnChunk
+        List<int> itemIDsOnTile
+      }
+    }
+  

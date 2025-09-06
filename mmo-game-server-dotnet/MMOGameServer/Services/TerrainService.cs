@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using MMOGameServer.Models;
+using MMOGameServer.Models.Snapshots;
 
 namespace MMOGameServer.Services;
 
@@ -508,6 +509,170 @@ public class TerrainService
         if (_npcService != null)
         {
             _npcService.AuditOrphanedNPCs();
+        }
+    }
+
+    // Ground Items Management
+    
+    /// <summary>
+    /// Adds an item to the ground at a specific world position
+    /// </summary>
+    public bool AddGroundItem(int worldX, int worldY, int itemId)
+    {
+        var (chunkX, chunkY, localX, localY) = WorldPositionToTileCoord(worldX, worldY);
+        var chunkKey = $"{chunkX},{chunkY}";
+
+        if (!_chunks.TryGetValue(chunkKey, out var chunk))
+            {
+                _logger.LogWarning($"Cannot drop item on unloaded chunk {chunkKey}");
+                return false;
+            }
+        
+        // Check if tile is walkable (items can only be dropped on walkable tiles)
+        if (!ValidateMovement(worldX, worldY))
+        {
+            _logger.LogWarning($"Cannot drop item on non-walkable tile at ({worldX}, {worldY})");
+            return false;
+        }
+        
+        var tileKey = (localX, localY);
+        
+        // Add to existing list or create new one
+        if (!chunk.GroundItems.ContainsKey(tileKey))
+        {
+            chunk.GroundItems[tileKey] = new List<ServerGroundItem>();
+        }
+        
+        var groundItem = new ServerGroundItem(itemId);
+        chunk.GroundItems[tileKey].Add(groundItem);
+        
+        _logger.LogDebug($"Added item {itemId} to ground at world ({worldX}, {worldY}), chunk {chunkKey}, local ({localX}, {localY})");
+        return true;
+    }
+    
+    /// <summary>
+    /// Removes a specific item from the ground at a world position
+    /// </summary>
+    public bool RemoveGroundItem(int worldX, int worldY, int itemId)
+    {
+        var (chunkX, chunkY, localX, localY) = WorldPositionToTileCoord(worldX, worldY);
+        var chunkKey = $"{chunkX},{chunkY}";
+        
+        if (!_chunks.TryGetValue(chunkKey, out var chunk))
+        {
+            return false;
+        }
+        
+        var tileKey = (localX, localY);
+        
+        if (!chunk.GroundItems.TryGetValue(tileKey, out var items))
+        {
+            return false;
+        }
+        
+        // Remove first matching item
+        var itemToRemove = items.FirstOrDefault(i => i.ItemId == itemId);
+        if (itemToRemove != null)
+        {
+            items.Remove(itemToRemove);
+            
+            // Clean up empty lists
+            if (items.Count == 0)
+            {
+                chunk.GroundItems.Remove(tileKey);
+            }
+            
+            _logger.LogDebug($"Removed item {itemId} from ground at world ({worldX}, {worldY})");
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Gets all ground items for chunks visible to a player
+    /// </summary>
+    public List<ChunkGroundItems> GetVisibleGroundItems(HashSet<string> visibleChunks)
+    {
+        var result = new List<ChunkGroundItems>();
+        
+        foreach (var chunkKey in visibleChunks)
+        {
+            if (!_chunks.TryGetValue(chunkKey, out var chunk))
+                continue;
+                
+            if (chunk.GroundItems.Count == 0)
+                continue;
+            
+            var parts = chunkKey.Split(',');
+            if (parts.Length != 2 || !int.TryParse(parts[0], out var chunkX) || !int.TryParse(parts[1], out var chunkY))
+                continue;
+            
+            var chunkGroundItems = new ChunkGroundItems
+            {
+                ChunkX = chunkX,
+                ChunkY = chunkY,
+                Tiles = new List<GroundTileStack>()
+            };
+            
+            foreach (var (tilePos, items) in chunk.GroundItems)
+            {
+                if (items.Count > 0)
+                {
+                    chunkGroundItems.Tiles.Add(new GroundTileStack
+                    {
+                        X = tilePos.x,
+                        Y = tilePos.y,
+                        Items = items.Select(i => i.ItemId).ToList()
+                    });
+                }
+            }
+            
+            if (chunkGroundItems.Tiles.Count > 0)
+            {
+                result.Add(chunkGroundItems);
+            }
+        }
+        
+        return result;
+    }
+    
+    /// <summary>
+    /// Increments timers for all ground items and removes expired ones
+    /// Called by GameLoopService each tick
+    /// </summary>
+    public void UpdateGroundItemTimers(int maxGroundTicks)
+    {
+        foreach (var chunk in _chunks.Values)
+        {
+            var tilesToClean = new List<(int x, int y)>();
+            
+            foreach (var (tilePos, items) in chunk.GroundItems)
+            {
+                // Increment timers and remove expired items
+                items.RemoveAll(item =>
+                {
+                    item.OnGroundTimer++;
+                    if (item.OnGroundTimer >= maxGroundTicks)
+                    {
+                        _logger.LogDebug($"Removing expired item {item.ItemId} from chunk {chunk.ChunkX},{chunk.ChunkY} tile ({tilePos.x}, {tilePos.y})");
+                        return true;
+                    }
+                    return false;
+                });
+                
+                // Mark empty tiles for cleanup
+                if (items.Count == 0)
+                {
+                    tilesToClean.Add(tilePos);
+                }
+            }
+            
+            // Clean up empty tiles
+            foreach (var tile in tilesToClean)
+            {
+                chunk.GroundItems.Remove(tile);
+            }
         }
     }
 

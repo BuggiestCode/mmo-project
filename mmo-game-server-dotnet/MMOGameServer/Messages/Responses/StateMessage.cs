@@ -39,4 +39,8 @@ public class StateMessage
     [JsonPropertyName("npcsToUnload")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int[]? NpcsToUnload { get; set; }
+    
+    [JsonPropertyName("groundItems")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ChunkGroundItems>? GroundItems { get; set; }
 }
