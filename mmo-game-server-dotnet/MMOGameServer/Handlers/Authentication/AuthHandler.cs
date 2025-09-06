@@ -257,7 +257,8 @@ public class AuthHandler : IMessageHandler<AuthMessage>
                 FacialHairStyleIndex = client.Player.FacialHairStyleIndex,
                 IsMale = client.Player.IsMale,
                 Health = client.Player.CurrentHealth,
-                MaxHealth = client.Player.MaxHealth
+                MaxHealth = client.Player.MaxHealth,
+                Inventory = client.Player.Inventory
             },
 
             playerSkills = skillSnapshots,

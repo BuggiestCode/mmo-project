@@ -126,7 +126,8 @@ public class GameWorldService
             IsMale = client.Player.IsMale,
             Health = client.Player.CurrentHealth,
             MaxHealth = client.Player.MaxHealth,
-            TookDamage = client.Player.DamageTakenThisTick.Any()
+            TookDamage = client.Player.DamageTakenThisTick.Any(),
+            Inventory = client.Player.Inventory
         };
     }
     

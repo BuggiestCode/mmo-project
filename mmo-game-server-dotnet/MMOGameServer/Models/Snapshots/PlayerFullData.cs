@@ -54,4 +54,8 @@ public class PlayerFullData
     
     [JsonPropertyName("tookDamage")]
     public bool TookDamage { get; set; }
+    
+    // Inventory
+    [JsonPropertyName("inventory")]
+    public int[]? Inventory { get; set; }
 }

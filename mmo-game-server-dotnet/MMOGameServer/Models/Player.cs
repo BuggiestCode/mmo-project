@@ -41,6 +41,10 @@ public class Player : Character
     public HashSet<string> VisibilityChunks { get; set; } = new();
     public HashSet<int> VisibleNPCs { get; set; } = new();
 
+    // Inventory System
+    public const int PlayerInventorySize = 30; // Standard inventory size
+    public int[] Inventory { get; set; }
+    public bool InventoryDirty { get; set; } // Track when inventory changes
 
     public static int StartHealthLevel = 10;
 
@@ -52,6 +56,15 @@ public class Player : Character
         Facing = 0;
         IsDirty = false;
         DoNetworkHeartbeat = false;
+
+        Random rand = new Random();
+
+        // Initialize empty inventory (-1 = empty slot)
+        Inventory = new int[PlayerInventorySize];
+        for (int i = 0; i < PlayerInventorySize; i++)
+        {
+            Inventory[i] = rand.Next(-1, 2);
+        }
     }
 
     // Override to add logging
@@ -87,13 +100,20 @@ public class Player : Character
             MaxHealth = MaxHealth,
             TookDamage = DamageTakenThisTick.Any(),
             IsAlive = IsAlive,  // Include death state for client animation
-            TeleportMove = TeleportMove  // Flag for instant position changes
+            TeleportMove = TeleportMove,  // Flag for instant position changes
+            Inventory = InventoryDirty ? Inventory : null  // Only send inventory when changed
         };
         
         // Clear teleport flag after including in snapshot
         if (TeleportMove)
         {
             TeleportMove = false;
+        }
+        
+        // Clear inventory dirty flag after including in snapshot
+        if (InventoryDirty)
+        {
+            InventoryDirty = false;
         }
 
         return snapshot;

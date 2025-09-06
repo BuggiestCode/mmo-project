@@ -50,4 +50,8 @@ public class PlayerSnapshot
     
     [JsonPropertyName("teleportMove")]
     public bool TeleportMove { get; set; }
+    
+    // Inventory (only sent when changed)
+    [JsonPropertyName("inventory")]
+    public int[]? Inventory { get; set; }
 }

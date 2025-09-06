@@ -23,6 +23,7 @@ builder.Services.AddSingleton<PathfindingService>();
 builder.Services.AddSingleton<CombatService>();
 builder.Services.AddSingleton<NPCService>();
 builder.Services.AddSingleton<PlayerService>();
+builder.Services.AddSingleton<InventoryService>();
 
 // Register message processing services
 builder.Services.AddSingleton<MessageRouter>();

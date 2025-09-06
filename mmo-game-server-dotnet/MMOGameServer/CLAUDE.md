@@ -130,30 +130,15 @@ This is a multiplayer online game (MMO) with a distributed architecture consisti
 - Connection pooling through Npgsql
 
 
-***Current task: Experience on runtime players which integrates with GameDatabase schema***
+***Current task: Basic inventory and items system ***
 
-Current Schema:
-  skill_health_cur_level SMALLINT NOT NULL DEFAULT 10,
-  skill_health_xp INTEGER NOT NULL DEFAULT 1822,  -- [XP Required(L) = CEIL((10 * (L - 1)^3)/4)] -> 1822 = level 10
+- Player Inventory System: Simple array of (PlayerInventorySize) ints, -1 = empty slot then itemIDs
+- Snapshot of inventory serialized into FullPlayerSnapshot, for now we init an empty inventory of size 
+  (PlayerInventorySize) in the Player init and parse that.
+- Player Inventory serialized into the StateMessage
+- Inventory Service that flags a player to 'SetDirty' when inventory changes: 
+  (Add Item to inventory, Remove Item from inventory from inventory methods)
 
-  skill_attack_cur_level SMALLINT NOT NULL DEFAULT 1,
-  skill_attack_xp INTEGER NOT NULL DEFAULT 0,
-
-  skill_defence_cur_level SMALLINT NOT NULL DEFAULT 1,
-  skill_defence_xp INTEGER NOT NULL DEFAULT 0
-
-
-- We have a public Skill(SkillType type, int baseLevel) class. When we deserialize a player, we want to fetch the skill_SKILLNAME_xp as well as the cur_level.
-base_level is then inferred from the xp and cached on the skill object instance using the formula [XP Required(L) = ΣCEIL((10 * (L - 1)^3)/4)] where L is the target level so for lvl 10 we need 5064xp, hence why we init the player's health at that value.
-- Cur level is the level with modifications, buffs and debuffs applied, in the case of health this is the 'curValue' after taking damage so we infer 10maxHP from xp and I was struck by a goblin for 4 damage skill_health_cur_level = 6 (once serialized.)
-- Speaking of serialization, we need to add saving the current xp and cur level to this database during our periodic saves as well as on quit.
-- This should all be pretty easy to tack on since it's really just a serialization system for the curHP/maxHP but rather than saving maxHP we are saving an xp amount so I can kill 2 birds with one stone on the database.
-- I will need accessor methods to modify the cur XP as well, the final Skill should have:
-    CurrentValue
-    BaseValue
-    CurrentXP
-
-    When we mod CurrentXP we do a re-inferrence on BaseValue to check if that levelled us up, BaseValue is just a cache of the level the skill so we don't have to calculate it every time.
-    In instances where we DO have to calculate a level from XP or check if XP is over a next level threshold, I have added a .csv to the project which contains the level thresholds starting at 1=0 and going up to 200=990025038.
-    The max XP for a skill in the game is 1 billion.
-    "C:\Users\JackS\Documents\MMO\mmo-game-server-dotnet\MMOGameServer\levels\xp_thresholds.csv"
+Don't worry about any incoming message integration, we will address that later, for now let's just 
+get the Server->Client flow set up from a functioning inventory of a given size that can have the IDs changed 
+and have it propagate to the client through the initial snapshot and then state updates.
