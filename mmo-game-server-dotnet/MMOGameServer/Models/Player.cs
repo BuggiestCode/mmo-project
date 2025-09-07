@@ -41,7 +41,7 @@ public class Player : Character
     public HashSet<string> VisibilityChunks { get; set; } = new();
     public HashSet<int> VisibleNPCs { get; set; } = new();
 
-    public HashSet<ChunkGroundItems> VisibleGroundItems { get; set; } = new();
+    public HashSet<ServerGroundItem> VisibleGroundItems { get; set; } = new();
 
     // Inventory System
     public const int PlayerInventorySize = 30; // Standard inventory size

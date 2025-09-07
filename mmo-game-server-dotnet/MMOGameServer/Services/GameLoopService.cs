@@ -153,7 +153,7 @@ public class GameLoopService : BackgroundService
         
         // Update ground item timers and clean up expired items
         // Items expire after the set ticks ticks
-        _terrainService.UpdateGroundItemTimers(InventoryService.GROUN_ITEM_DESPAWN_TICKS);
+        _terrainService.UpdateGroundItemTimers();
 
         // === POST-COMBAT CLEANUP ===
 
@@ -232,8 +232,8 @@ public class GameLoopService : BackgroundService
                 .ToList();
 
             // Get visible ground items for this player
-            var visibleGroundItems = _terrainService.GetVisibleGroundItems(client.Player.VisibilityChunks) ?? new HashSet<ChunkGroundItems>();
-            var previousVisibleGroundItems = client.Player.VisibleGroundItems ?? new HashSet<ChunkGroundItems>();
+            var visibleGroundItems = _terrainService.GetVisibleGroundItems(client.Player.VisibilityChunks) ?? new HashSet<ServerGroundItem>();
+            var previousVisibleGroundItems = client.Player.VisibleGroundItems ?? new HashSet<ServerGroundItem>();
             var newlyVisibleGroundItems = visibleGroundItems.Except(previousVisibleGroundItems).ToHashSet();
             var noLongerVisibleGroundItems = previousVisibleGroundItems.Except(visibleGroundItems).ToHashSet();
 
@@ -242,7 +242,8 @@ public class GameLoopService : BackgroundService
 
             // Only send update if there are changes
             if (selfUpdate != null || selfModifiedSkills.Any() || visiblePlayerSnapshots.Any() || visibleNpcSnapshots.Any() ||
-                hasVisibilityChanges || newlyVisibleNpcs.Any() || noLongerVisibleNpcs.Any() || visibleGroundItems?.Any() == true)
+                hasVisibilityChanges || newlyVisibleNpcs.Any() || noLongerVisibleNpcs.Any() ||
+                newlyVisibleGroundItems?.Any() == true || noLongerVisibleGroundItems?.Any() == true)
             {
                 // Get the full player data for newly visible players
                 List<PlayerFullData>? clientsToLoad = null;
@@ -273,10 +274,10 @@ public class GameLoopService : BackgroundService
                         ? noLongerVisibleNpcs.ToArray()
                         : null,
                     GroundItemsToLoad = newlyVisibleGroundItems?.Any() == true
-                        ? newlyVisibleGroundItems.ToArray()
+                        ? TerrainService.ReconstructGroundItemsSnapshot(newlyVisibleGroundItems).Cast<object>().ToArray()
                         : null,
                     GroundItemsToUnLoad = noLongerVisibleGroundItems?.Any() == true
-                        ? noLongerVisibleGroundItems.ToArray()
+                        ? TerrainService.ReconstructGroundItemsSnapshot(noLongerVisibleGroundItems).Cast<object>().ToArray()
                         : null,
                 };
 

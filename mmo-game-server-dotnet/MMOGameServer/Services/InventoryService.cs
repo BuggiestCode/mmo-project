@@ -6,7 +6,6 @@ public class InventoryService
 {
     private readonly ILogger<InventoryService> _logger;
     private readonly TerrainService _terrainService;
-    public const int GROUN_ITEM_DESPAWN_TICKS = 20;
 
     public InventoryService(ILogger<InventoryService> logger, TerrainService terrainService)
     {

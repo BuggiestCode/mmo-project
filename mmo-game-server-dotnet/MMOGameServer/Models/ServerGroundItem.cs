@@ -4,7 +4,7 @@ namespace MMOGameServer.Models;
 /// Represents a single item or stack of items on the ground
 /// Tracks server-side state like drop time and future stack counts
 /// </summary>
-public class ServerGroundItem
+public class ServerGroundItem : IEquatable<ServerGroundItem>
 {
     private static int _nextUid = 1;
     private static readonly object _uidLock = new object();
@@ -12,7 +12,7 @@ public class ServerGroundItem
     /// <summary>
     /// The UID of the item in the stack
     /// </summary>
-    public int InstanceUID;
+    public int InstanceID;
 
     /// <summary>
     /// The item ID (type of item)
@@ -31,10 +31,25 @@ public class ServerGroundItem
     /// </summary>
     public int Count { get; set; } = 1;
 
-    public ServerGroundItem(int itemId)
+    public int ChunkX { get; set; }
+    public int ChunkY { get; set; }
+
+    public int TileX { get; set; }
+    public int TileY { get; set; }
+
+    // 180 * 0.5s = 90s despawn time
+    public const int GROUND_ITEM_DESPAWN_TICKS = 180;
+
+    public ServerGroundItem(int itemId, int chunkX, int chunkY, int tileX, int tileY)
     {
-        InstanceUID = GenerateUID();
+        InstanceID = GenerateUID();
         ItemId = itemId;
+
+        ChunkX = chunkX;
+        ChunkY = chunkY;
+        TileX = tileX;
+        TileY = tileY;
+
         OnGroundTimer = 0;
         Count = 1;
     }
@@ -50,5 +65,21 @@ public class ServerGroundItem
 
             return _nextUid++;
         }
+    }
+
+    public bool Equals(ServerGroundItem? other)
+    {
+        if (other is null) return false;
+        return InstanceID == other.InstanceID;
+    }
+    
+    public override bool Equals(object? obj)
+    {
+        return Equals(obj as ServerGroundItem);
+    }
+    
+    public override int GetHashCode()
+    {
+        return InstanceID.GetHashCode();
     }
 }
