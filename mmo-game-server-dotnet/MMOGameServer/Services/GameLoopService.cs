@@ -232,9 +232,13 @@ public class GameLoopService : BackgroundService
                 .ToList();
 
             // Get visible ground items for this player
-            var visibleGroundItems = client.Player.VisibilityChunks != null && client.Player.VisibilityChunks.Any()
-                ? _terrainService.GetVisibleGroundItems(client.Player.VisibilityChunks)
-                : null;
+            var visibleGroundItems = _terrainService.GetVisibleGroundItems(client.Player.VisibilityChunks) ?? new HashSet<ChunkGroundItems>();
+            var previousVisibleGroundItems = client.Player.VisibleGroundItems ?? new HashSet<ChunkGroundItems>();
+            var newlyVisibleGroundItems = visibleGroundItems.Except(previousVisibleGroundItems).ToHashSet();
+            var noLongerVisibleGroundItems = previousVisibleGroundItems.Except(visibleGroundItems).ToHashSet();
+
+            // Propagate
+            client.Player.VisibleGroundItems = visibleGroundItems;
 
             // Only send update if there are changes
             if (selfUpdate != null || selfModifiedSkills.Any() || visiblePlayerSnapshots.Any() || visibleNpcSnapshots.Any() ||
@@ -268,7 +272,12 @@ public class GameLoopService : BackgroundService
                     NpcsToUnload = noLongerVisibleNpcs.Any()
                         ? noLongerVisibleNpcs.ToArray()
                         : null,
-                    GroundItems = visibleGroundItems?.Any() == true ? visibleGroundItems : null
+                    GroundItemsToLoad = newlyVisibleGroundItems?.Any() == true
+                        ? newlyVisibleGroundItems.ToArray()
+                        : null,
+                    GroundItemsToUnLoad = noLongerVisibleGroundItems?.Any() == true
+                        ? noLongerVisibleGroundItems.ToArray()
+                        : null,
                 };
 
                 updateTasks.Add(client.SendMessageAsync(personalizedUpdate));

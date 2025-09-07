@@ -540,20 +540,20 @@ public class TerrainService
         // Add to existing list or create new one
         if (!chunk.GroundItems.ContainsKey(tileKey))
         {
-            chunk.GroundItems[tileKey] = new List<ServerGroundItem>();
+            chunk.GroundItems[tileKey] = new HashSet<ServerGroundItem>();
         }
         
         var groundItem = new ServerGroundItem(itemId);
         chunk.GroundItems[tileKey].Add(groundItem);
         
-        _logger.LogDebug($"Added item {itemId} to ground at world ({worldX}, {worldY}), chunk {chunkKey}, local ({localX}, {localY})");
+        _logger.LogDebug($"Added item NEWUID: {groundItem.InstanceUID} Type: {itemId} to ground at world ({worldX}, {worldY}), chunk {chunkKey}, local ({localX}, {localY})");
         return true;
     }
     
     /// <summary>
     /// Removes a specific item from the ground at a world position
     /// </summary>
-    public bool RemoveGroundItem(int worldX, int worldY, int itemId)
+    public bool RemoveGroundItem(int worldX, int worldY, int instanceUID)
     {
         var (chunkX, chunkY, localX, localY) = WorldPositionToTileCoord(worldX, worldY);
         var chunkKey = $"{chunkX},{chunkY}";
@@ -571,7 +571,7 @@ public class TerrainService
         }
         
         // Remove first matching item
-        var itemToRemove = items.FirstOrDefault(i => i.ItemId == itemId);
+        var itemToRemove = items.FirstOrDefault(i => i.InstanceUID == instanceUID);
         if (itemToRemove != null)
         {
             items.Remove(itemToRemove);
@@ -582,7 +582,7 @@ public class TerrainService
                 chunk.GroundItems.Remove(tileKey);
             }
             
-            _logger.LogDebug($"Removed item {itemId} from ground at world ({worldX}, {worldY})");
+            _logger.LogDebug($"Removed item UID: {instanceUID} Type: {itemToRemove.ItemId} from ground at world ({worldX}, {worldY})");
             return true;
         }
         
@@ -592,9 +592,9 @@ public class TerrainService
     /// <summary>
     /// Gets all ground items for chunks visible to a player
     /// </summary>
-    public List<ChunkGroundItems> GetVisibleGroundItems(HashSet<string> visibleChunks)
+    public HashSet<ChunkGroundItems> GetVisibleGroundItems(HashSet<string> visibleChunks)
     {
-        var result = new List<ChunkGroundItems>();
+        var result = new HashSet<ChunkGroundItems>();
         
         foreach (var chunkKey in visibleChunks)
         {
@@ -612,7 +612,7 @@ public class TerrainService
             {
                 ChunkX = chunkX,
                 ChunkY = chunkY,
-                Tiles = new List<GroundTileStack>()
+                Tiles = new HashSet<GroundTileStack>()
             };
             
             foreach (var (tilePos, items) in chunk.GroundItems)
@@ -623,7 +623,11 @@ public class TerrainService
                     {
                         X = tilePos.x,
                         Y = tilePos.y,
-                        Items = items.Select(i => i.ItemId).ToList()
+                        ItemsInstanceIDs = items.Select(i => new GroundItem 
+                        { 
+                            InstanceID = i.InstanceUID, 
+                            ItemID = i.ItemId 
+                        }).ToHashSet()
                     });
                 }
             }
@@ -650,7 +654,7 @@ public class TerrainService
             foreach (var (tilePos, items) in chunk.GroundItems)
             {
                 // Increment timers and remove expired items
-                items.RemoveAll(item =>
+                items.RemoveWhere(item =>
                 {
                     item.OnGroundTimer++;
                     if (item.OnGroundTimer >= maxGroundTicks)
