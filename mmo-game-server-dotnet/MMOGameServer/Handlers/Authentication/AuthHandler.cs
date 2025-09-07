@@ -272,20 +272,27 @@ public class AuthHandler : IMessageHandler<AuthMessage>
         // Hard build visibility arrays to cover both connect and soft reconnects
         var visibleNpcIds = _npcService?.GetVisibleNPCs(client.Player) ?? new HashSet<int>();
         var visiblePlayerIDs = _terrain?.GetVisiblePlayers(client.Player) ?? new HashSet<int>();
+        
+        // Get visible ground items (flattened)
+        var visibleGroundItems = _terrain?.GetVisibleGroundItems(client.Player.VisibilityChunks) ?? new HashSet<ServerGroundItem>();
 
-        // Send state update with visible players and NPCs
-        if (visiblePlayerIDs.Any() || visibleNpcIds.Any())
+        // Send state update with visible players, NPCs, and ground items
+        if (visiblePlayerIDs.Any() || visibleNpcIds.Any() || visibleGroundItems.Any())
         {
             var visiblePlayersData = _gameWorld?.GetFullPlayerData(visiblePlayerIDs) ?? new List<PlayerFullData>();
             var visibleNPCsData = _npcService?.GetNPCSnapshots(visibleNpcIds) ?? new List<object>();
 
-            // Update player's visible NPCs tracking
+            // Update player's visible NPCs and ground items tracking (reset for reconnect)
             client.Player.VisibleNPCs = visibleNpcIds;
+            client.Player.VisibleGroundItems = visibleGroundItems;
 
             var stateMessage = new StateMessage
             {
                 ClientsToLoad = visiblePlayersData?.Any() == true ? visiblePlayersData.Cast<object>().ToList() : null,
                 NpcsToLoad = visibleNPCsData?.Any() == true ? visibleNPCsData : null,
+                GroundItemsToLoad = visibleGroundItems?.Any() == true 
+                    ? TerrainService.ReconstructGroundItemsSnapshot(visibleGroundItems).Cast<object>().ToList() 
+                    : null,
             };
 
             await client.SendMessageAsync(stateMessage);
