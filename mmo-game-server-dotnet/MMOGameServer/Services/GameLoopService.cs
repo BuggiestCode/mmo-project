@@ -152,9 +152,8 @@ public class GameLoopService : BackgroundService
         // === GROUND ITEMS MAINTENANCE ===
         
         // Update ground item timers and clean up expired items
-        // Items expire after 600 ticks (5 minutes at 500ms tick rate)
-        const int maxGroundItemTicks = 600;
-        _terrainService.UpdateGroundItemTimers(maxGroundItemTicks);
+        // Items expire after the set ticks ticks
+        _terrainService.UpdateGroundItemTimers(InventoryService.GROUN_ITEM_DESPAWN_TICKS);
 
         // === POST-COMBAT CLEANUP ===
 
@@ -236,7 +235,7 @@ public class GameLoopService : BackgroundService
             var visibleGroundItems = client.Player.VisibilityChunks != null && client.Player.VisibilityChunks.Any()
                 ? _terrainService.GetVisibleGroundItems(client.Player.VisibilityChunks)
                 : null;
-            
+
             // Only send update if there are changes
             if (selfUpdate != null || selfModifiedSkills.Any() || visiblePlayerSnapshots.Any() || visibleNpcSnapshots.Any() ||
                 hasVisibilityChanges || newlyVisibleNpcs.Any() || noLongerVisibleNpcs.Any() || visibleGroundItems?.Any() == true)
@@ -252,7 +251,7 @@ public class GameLoopService : BackgroundService
                         clientsToLoad = playerData;
                     }
                 }
-                
+
                 var personalizedUpdate = new StateMessage
                 {
                     SelfStateUpdate = selfUpdate,
