@@ -16,5 +16,6 @@ public enum MessageType
     SetTarget,
     SkillUpdate,
     SetAttackStyle,
-    DropItem
+    DropItem,
+    PickUp
 }

@@ -26,6 +26,9 @@ public class Player : Character
 
     // Combat properties
     public override int AttackCooldown => 3; // 3 ticks between attacks (1.5 seconds at 500ms tick rate)
+    
+    // ITargetable implementation - I am a Player type target
+    public override TargetType SelfTargetType => TargetType.Player;
     public AttackStyle CurrentAttackStyle { get; set; } = AttackStyle.Aggressive; // Default to aggressive
     
     // Death/Respawn tracking
@@ -96,7 +99,7 @@ public class Player : Character
             IsMoving = IsMoving,
             PerformedAction = PerformedAction,
             CurrentTargetId = CurrentTargetId ?? -1,  // -1 for no target (frontend convention)
-            IsTargetPlayer = CurrentTargetId.HasValue ? IsTargetPlayer : false,  // Default to false when no target
+            CurTargetType = CurrentTargetType,  // Will be None if no target
             DamageSplats = damageSplats.Any() ? damageSplats : null,
             Health = CurrentHealth,
             MaxHealth = MaxHealth,

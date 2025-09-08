@@ -546,16 +546,48 @@ public class TerrainService
         var groundItem = new ServerGroundItem(itemId, chunk.ChunkX, chunk.ChunkY, localX, localY);
         chunk.GroundItems[tileKey].Add(groundItem);
         
-        _logger.LogDebug($"Added item NEWUID: {groundItem.InstanceID} Type: {itemId} to ground at world ({worldX}, {worldY}), chunk {chunkKey}, local ({localX}, {localY})");
+        _logger.LogInformation($"Added item Type: {itemId}({groundItem.InstanceID}) to ground at world ({worldX}, {worldY}), chunk {chunkKey}, local ({localX}, {localY})");
         return true;
+    }
+
+    /// <summary>
+    /// Convert chunk and tile coordinates to world coordinates
+    /// </summary>
+    public (int worldX, int worldY) ChunkTileToWorldCoords(int chunkX, int chunkY, int tileX, int tileY)
+    {
+        return (chunkX * _chunkSize + tileX, chunkY * _chunkSize + tileY);
     }
     
     /// <summary>
-    /// Removes a specific item from the ground at a world position
+    /// Gets a specific ground item at a world position by its UID
     /// </summary>
-    public bool RemoveGroundItem(int worldX, int worldY, int instanceUID)
+    public ServerGroundItem? GetGroundItem(int worldX, int worldY, int instanceUID)
     {
         var (chunkX, chunkY, localX, localY) = WorldPositionToTileCoord(worldX, worldY);
+        var chunkKey = $"{chunkX},{chunkY}";
+
+        _logger.LogInformation($"GET ITEM:{instanceUID} ({chunkX}, {chunkY}) ({localX}, {localY})");
+        
+        if (!_chunks.TryGetValue(chunkKey, out var chunk))
+        {
+            return null;
+        }
+        
+        var tileKey = (localX, localY);
+        
+        if (!chunk.GroundItems.TryGetValue(tileKey, out var items))
+        {
+            return null;
+        }
+        
+        return items.FirstOrDefault(i => i.InstanceID == instanceUID);
+    }
+    
+    /// <summary>
+    /// Removes a specific item from the ground using chunk/tile coordinates
+    /// </summary>
+    public bool RemoveGroundItem(int chunkX, int chunkY, int tileX, int tileY, int instanceUID)
+    {
         var chunkKey = $"{chunkX},{chunkY}";
         
         if (!_chunks.TryGetValue(chunkKey, out var chunk))
@@ -563,11 +595,50 @@ public class TerrainService
             return false;
         }
         
-        var tileKey = (localX, localY);
+        var tileKey = (tileX, tileY);
         
         if (!chunk.GroundItems.TryGetValue(tileKey, out var items))
         {
             return false;
+        }
+        
+        // Remove matching item
+        var itemToRemove = items.FirstOrDefault(i => i.InstanceID == instanceUID);
+        if (itemToRemove != null)
+        {
+            items.Remove(itemToRemove);
+            
+            // Clean up empty lists
+            if (items.Count == 0)
+            {
+                chunk.GroundItems.Remove(tileKey);
+            }
+            
+            _logger.LogDebug($"Removed item UID: {instanceUID} Type: {itemToRemove.ItemId} from chunk ({chunkX},{chunkY}) tile ({tileX},{tileY})");
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /// <summary>
+    /// Removes a specific item from the ground at a world position
+    /// </summary>
+    public ServerGroundItem? RemoveGroundItem(int worldX, int worldY, int instanceUID)
+    {
+        var (chunkX, chunkY, localX, localY) = WorldPositionToTileCoord(worldX, worldY);
+        var chunkKey = $"{chunkX},{chunkY}";
+        
+        if (!_chunks.TryGetValue(chunkKey, out var chunk))
+        {
+            return null;
+        }
+        
+        var tileKey = (localX, localY);
+        
+        if (!chunk.GroundItems.TryGetValue(tileKey, out var items))
+        {
+            return null;
         }
         
         // Remove first matching item
@@ -583,10 +654,10 @@ public class TerrainService
             }
             
             _logger.LogDebug($"Removed item UID: {instanceUID} Type: {itemToRemove.ItemId} from ground at world ({worldX}, {worldY})");
-            return true;
+            return itemToRemove;
         }
         
-        return false;
+        return null;
     }
     
     /// <summary>

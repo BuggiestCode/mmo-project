@@ -46,6 +46,30 @@ public class InventoryService
     }
 
     /// <summary>
+    /// Gets the first free slot in the player's inventory
+    /// </summary>
+    /// <param name="player">The player whose inventory to check</param>
+    /// <returns>The index of the first free slot, or -1 if inventory is full</returns>
+    public int GetFreeSlot(Player player)
+    {
+        if (player == null)
+        {
+            _logger.LogWarning("GetFreeSlot called with null player");
+            return -1;
+        }
+
+        for (int i = 0; i < player.Inventory.Length; i++)
+        {
+            if (player.Inventory[i] == -1)
+            {
+                return i;
+            }
+        }
+
+        return -1; // Inventory full
+    }
+
+    /// <summary>
     /// Removes an item from a specific slot in the player's inventory
     /// </summary>
     /// <param name="player">The player whose inventory to modify</param>
@@ -224,7 +248,7 @@ public class InventoryService
             player.InventoryDirty = true;
             player.IsDirty = true;
             
-            _logger.LogInformation($"Player {player.UserId} dropped item {itemId} from slot {slotIndex} at ({player.X}, {player.Y})");
+            _logger.LogInformation($"Player {player.UserId} dropped item type ({itemId}) from slot ({slotIndex}) at ({player.X}, {player.Y})");
             return true;
         }
         else

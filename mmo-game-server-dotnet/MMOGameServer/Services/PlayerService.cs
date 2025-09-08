@@ -43,10 +43,11 @@ public class PlayerService
         ValidateTarget(player);
         
         // Process movement based on state
-        if (player.CombatState == CombatState.InCombat && player.TargetCharacter != null)
+        if (player.CurrentTarget != null)
         {
-            // In combat: Players use A* to reach targets (strategic positioning)
-            await ProcessCombatMovement(player);
+            // Move to target - either adjacent (combat) or exact position (item pickup)
+            bool pathToExactPosition = player.HasGroundItemTarget;
+            await ProcessTargetMovement(player, pathToExactPosition);
         }
         else
         {
@@ -56,15 +57,23 @@ public class PlayerService
     }
     
     /// <summary>
-    /// Process A* pathfinding movement during combat.
+    /// Process A* pathfinding movement toward a target.
     /// </summary>
-    private async Task ProcessCombatMovement(Player player)
+    /// <param name="player">The player to move</param>
+    /// <param name="pathToExactPosition">If true, path to the exact position (for items). If false, stop when adjacent (for combat).</param>
+    private async Task ProcessTargetMovement(Player player, bool pathToExactPosition = false)
     {
-        if (player.TargetCharacter == null) return;
+        if (player.CurrentTarget == null) return;
         
-        // Check if we need to path to target
-        if (!_combatService.IsAdjacentCardinal(player.X, player.Y, 
-            player.TargetCharacter.X, player.TargetCharacter.Y))
+        var targetX = player.CurrentTarget.X;
+        var targetY = player.CurrentTarget.Y;
+        
+        // Check if we've reached the target based on the mode
+        bool atTarget = pathToExactPosition
+            ? (player.X == targetX && player.Y == targetY)
+            : _combatService.IsAdjacentCardinal(player.X, player.Y, targetX, targetY);
+        
+        if (!atTarget)
         {
             // Recalculate path if:
             // 1. We don't have an active path
@@ -78,9 +87,13 @@ public class PlayerService
                 if (currentPath != null && currentPath.Count > 0)
                 {
                     var pathDestination = currentPath[currentPath.Count - 1];
-                    // If path destination doesn't lead to adjacent tile of target, recalculate
-                    if (!_combatService.IsAdjacentCardinal(pathDestination.x, pathDestination.y,
-                        player.TargetCharacter.X, player.TargetCharacter.Y))
+                    
+                    // Check based on mode
+                    bool validDestination = pathToExactPosition
+                        ? (pathDestination.x == targetX && pathDestination.y == targetY)
+                        : _combatService.IsAdjacentCardinal(pathDestination.x, pathDestination.y, targetX, targetY);
+                    
+                    if (!validDestination)
                     {
                         needNewPath = true;
                         player.ClearPath();
@@ -94,33 +107,117 @@ public class PlayerService
                 var startPos = player.GetPathfindingStartPosition();
                 var path = await _pathfindingService.FindPathAsync(
                     startPos.x, startPos.y,
-                    player.TargetCharacter.X, player.TargetCharacter.Y
+                    targetX, targetY
                 );
                 
                 if (path != null && path.Count > 0)
                 {
-                    // Remove last step to avoid moving onto target's tile
-                    if (path.Count > 1)
+                    // For combat, remove last step to avoid moving onto target's tile
+                    // For item pickup, keep the full path if the target position is walkable
+                    if (!pathToExactPosition && path.Count > 1)
                     {
                         path.RemoveAt(path.Count - 1);
                     }
+                    else if (pathToExactPosition && !_terrainService.ValidateMovement(targetX, targetY))
+                    {
+                        // Item is on unwalkable tile - stop adjacent instead
+                        if (path.Count > 1)
+                        {
+                            path.RemoveAt(path.Count - 1);
+                        }
+                    }
+                    
                     player.SetPath(path);
                 }
                 else
                 {
                     // No path available - target might be blocked
                     _logger.LogDebug($"Player {player.UserId} cannot path to target");
+                    
+                    // Clear target if it's unreachable
+                    if (player.HasGroundItemTarget)
+                    {
+                        player.SetTarget(null);
+                    }
                 }
             }
         }
         else
         {
-            // Adjacent to target - stop moving
+            // At target - stop moving and handle arrival
             player.ClearPath();
+            
+            // Handle item pickup if this is a ground item target
+            if (player.HasGroundItemTarget)
+            {
+                var groundItemTarget = player.CurrentTarget as GroundItemTarget;
+                if (groundItemTarget != null)
+                {
+                    await ProcessPlayerItemPickup(player, groundItemTarget);
+                }
+            }
         }
         
         // Execute next move if we have a path
         await ProcessPathMovement(player);
+    }
+    
+    /// <summary>
+    /// Process the actual item pickup when player is at the target position.
+    /// </summary>
+    private async Task ProcessPlayerItemPickup(Player player, GroundItemTarget groundItemTarget)
+    {
+        var item = groundItemTarget.Item;
+        
+        // Try to add item to inventory
+        var slotIndex = AddItemToInventory(player, item.ItemId);
+        
+        if (slotIndex != -1)
+        {
+            // Successfully added - remove from ground using chunk/tile coordinates directly
+            _terrainService.RemoveGroundItem(item.ChunkX, item.ChunkY, item.TileX, item.TileY, item.InstanceID);
+            
+            // Get world coordinates for logging
+            var (worldX, worldY) = _terrainService.ChunkTileToWorldCoords(item.ChunkX, item.ChunkY, item.TileX, item.TileY);
+            _logger.LogInformation($"Player {player.UserId} picked up item {item.ItemId} (UID: {item.InstanceID}) from ({worldX}, {worldY}) into slot {slotIndex}");
+            
+            // Clear target after successful pickup
+            player.SetTarget(null);
+            
+            // Mark player and inventory as dirty
+            player.IsDirty = true;
+            player.InventoryDirty = true;
+        }
+        else
+        {
+            // Inventory full
+            _logger.LogDebug($"Player {player.UserId} cannot pick up item {item.ItemId} - inventory full");
+            
+            // Clear target since we can't pick it up
+            player.SetTarget(null);
+        }
+        
+        await Task.CompletedTask;
+    }
+    
+    /// <summary>
+    /// Add an item to the player's inventory.
+    /// Returns the slot index where the item was placed, or -1 if inventory is full.
+    /// </summary>
+    private int AddItemToInventory(Player player, int itemId)
+    {
+        // Find the first empty slot (-1 indicates empty)
+        for (int i = 0; i < player.Inventory.Length; i++)
+        {
+            if (player.Inventory[i] == -1)
+            {
+                player.Inventory[i] = itemId;
+                return i;
+            }
+        }
+        
+        // Inventory full
+        return -1;
     }
     
     /// <summary>

@@ -3,7 +3,7 @@ using MMOGameServer.Messages.Requests;
 using MMOGameServer.Models;
 using MMOGameServer.Services;
 
-namespace MMOGameServer.Handlers.Player;
+namespace MMOGameServer.Handlers.Inventory;
 
 /// <summary>
 /// Handles requests to drop items from player inventory to the ground
@@ -57,17 +57,7 @@ public class DropItemHandler : IMessageHandler<DropItemMessage>
         }
         
         // Attempt to drop the item
-        bool success = _inventoryService.DropItem(client.Player, message.SlotIndex);
-        
-        if (success)
-        {
-            _logger.LogInformation($"Player {client.Player.UserId} dropped item {itemId} from slot {message.SlotIndex}");
-            // The inventory change and ground item will be propagated in the next game tick via state update
-        }
-        else
-        {
-            _logger.LogWarning($"Failed to drop item {itemId} for player {client.Player.UserId} - terrain service rejected");
-        }
+        _inventoryService.DropItem(client.Player, message.SlotIndex);
         
         await Task.CompletedTask; // Async requirement
     }

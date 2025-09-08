@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using MMOGameServer.Messages.Requests;
 
 namespace MMOGameServer.Models.Snapshots;
 
@@ -28,8 +29,8 @@ public class PlayerSnapshot
     [JsonPropertyName("currentTargetId")]
     public int CurrentTargetId { get; set; } = -1; // -1 for no target
     
-    [JsonPropertyName("isTargetPlayer")]
-    public bool IsTargetPlayer { get; set; }
+    [JsonPropertyName("targetType")]
+    public TargetType CurTargetType { get; set; }
     
     [JsonPropertyName("damageSplats")]
     public List<int>? DamageSplats { get; set; }

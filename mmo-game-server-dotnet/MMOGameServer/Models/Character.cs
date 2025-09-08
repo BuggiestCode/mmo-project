@@ -7,7 +7,7 @@ public enum CombatState
     InCombat
 }
 
-public abstract class Character
+public abstract class Character : ITargetable
 {
     public abstract int Id { get; }
     public abstract int X { get; set; }
@@ -36,17 +36,26 @@ public abstract class Character
 
     // === COMBAT STATE ===
     public CombatState CombatState { get; protected set; } = CombatState.Idle;
-    public Character? TargetCharacter { get; protected set; }
+    public ITargetable? CurrentTarget { get; protected set; }
     public HashSet<Character> TargetedBy { get; } = new();  // Who is targeting me
 
     // For state messages - cached target info
-    public int? CurrentTargetId { get; protected set; }
-    public bool IsTargetPlayer { get; protected set; }
+    public int? CurrentTargetId => CurrentTarget?.Id;
+    public TargetType CurrentTargetType => CurrentTarget?.SelfTargetType ?? TargetType.None;
+    public bool IsTargetPlayer => CurrentTarget?.SelfTargetType == TargetType.Player;
+    
+    // Helper properties for specific target types
+    public Character? TargetCharacter => CurrentTarget as Character;
+    public bool HasGroundItemTarget => CurrentTarget?.SelfTargetType == TargetType.GroundItem;
 
     // Combat properties
     public bool IsAlive => CurrentHealth > 0;
     public int AttackCooldownRemaining { get; set; }
     public abstract int AttackCooldown { get; }
+    
+    // ITargetable implementation - what type of target THIS character is
+    public abstract TargetType SelfTargetType { get; }
+    public virtual bool IsValid => IsAlive;
     
     // Skill regeneration properties
     public virtual int SkillRegenTicks => 10; // Default: regenerate every 10 ticks (5 seconds)
@@ -240,36 +249,48 @@ public abstract class Character
     // === COMBAT METHODS ===
     
     /// <summary>
-    /// Sets a new combat target
+    /// Sets a new target (can be Character, GroundItem, etc.)
     /// </summary>
-    public virtual void SetTarget(Character? target)
+    public virtual void SetTarget(ITargetable? target)
     {
-        // Unregister from old target
-        if (TargetCharacter != null)
+        // Unregister from old character target if it was one
+        var oldCharTarget = CurrentTarget as Character;
+        if (oldCharTarget != null)
         {
-            TargetCharacter.TargetedBy.Remove(this);
+            oldCharTarget.TargetedBy.Remove(this);
         }
         
-        TargetCharacter = target;
+        CurrentTarget = target;
         
-        if (target != null)
+        // Handle character-specific targeting
+        var charTarget = target as Character;
+        if (charTarget != null)
         {
-            // Register with new target
-            target.TargetedBy.Add(this);
+            // Register with new character target
+            charTarget.TargetedBy.Add(this);
             CombatState = CombatState.InCombat;
-            CurrentTargetId = target.Id;
-            IsTargetPlayer = target is Player;
-            ClearPath(); // Clear any active path when entering combat
         }
-        else
+        else if (target == null)
         {
             CombatState = CombatState.Idle;
-            CurrentTargetId = null;
-            IsTargetPlayer = false;
             AttackCooldownRemaining = 0;
         }
         
+        // Clear any active path when setting new target
+        if (target != null)
+        {
+            ClearPath();
+        }
+        
         IsDirty = true;
+    }
+    
+    /// <summary>
+    /// Legacy method for backward compatibility - sets a character target
+    /// </summary>
+    public void SetTarget(Character? target)
+    {
+        SetTarget(target as ITargetable);
     }
     
     /// <summary>

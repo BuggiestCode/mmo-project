@@ -20,6 +20,10 @@ public class NPC : Character
     
     // NPC-specific properties
     public override int AttackCooldown => 4; // 4 ticks between attacks (2 seconds at 500ms tick rate)
+    
+    // ITargetable implementation - I am an NPC type target
+    public override TargetType SelfTargetType => TargetType.NPC;
+    
     public float AggroRange { get; set; } = 5.0f; // 5 tiles aggro range
     
     // Roaming behavior
@@ -63,7 +67,7 @@ public class NPC : Character
     }
     
     // Override SetTarget to reset roam timer when leaving combat
-    public override void SetTarget(Character? target)
+    public override void SetTarget(ITargetable? target)
     {
         base.SetTarget(target);
         if (target == null)
@@ -85,7 +89,7 @@ public class NPC : Character
             PerformedAction = PerformedAction,
             InCombat = CombatState == CombatState.InCombat,
             CurrentTargetId = CurrentTargetId ?? -1,  // -1 for no target (frontend convention)
-            IsTargetPlayer = CurrentTargetId.HasValue ? IsTargetPlayer : false,  // Default to false when no target
+            CurTargetType = CurrentTargetType,  // Will be None if no target
             DamageSplats = damageSplats.Any() ? damageSplats : null,
             Health = CurrentHealth,
             MaxHealth = MaxHealth,

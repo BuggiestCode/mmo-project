@@ -197,16 +197,6 @@ public class GameLoopService : BackgroundService
             var newlyVisibleNpcs = visibleNpcIds.Except(previousVisibleNpcIds).ToHashSet();
             var noLongerVisibleNpcs = previousVisibleNpcIds.Except(visibleNpcIds).ToHashSet();
             
-            // DEBUG: Log NPC visibility changes
-            if (newlyVisibleNpcs.Any())
-            {
-                _logger.LogInformation($"Player {playerId} newly visible NPCs: [{string.Join(", ", newlyVisibleNpcs)}]");
-            }
-            if (noLongerVisibleNpcs.Any())
-            {
-                _logger.LogInformation($"Player {playerId} no longer visible NPCs: [{string.Join(", ", noLongerVisibleNpcs)}]");
-            }
-            
             client.Player.VisibleNPCs = visibleNpcIds;
             
             // Separate self update from other players

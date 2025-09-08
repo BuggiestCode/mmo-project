@@ -7,6 +7,7 @@ using MMOGameServer.Handlers.Player;
 using MMOGameServer.Handlers.Communication;
 using MMOGameServer.Handlers.Session;
 using MMOGameServer.Handlers.Admin;
+using MMOGameServer.Handlers.Inventory;
 
 var builder = WebApplication.CreateBuilder(args);
 
