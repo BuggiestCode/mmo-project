@@ -50,6 +50,7 @@ public class Player : Character
     public const int PlayerInventorySize = 30; // Standard inventory size
     public int[] Inventory { get; set; }
     public bool InventoryDirty { get; set; } // Track when inventory changes
+    public int ActiveUseItemSlot { get; set; } = -1; // Currently selected item for use action
 
     public static int StartHealthLevel = 10;
 

@@ -42,7 +42,7 @@ builder.Services.AddScoped<IMessageHandler<CompleteCharacterCreationMessage>, Ch
 builder.Services.AddScoped<IMessageHandler<SaveCharacterLookAttributesMessage>, CharacterAttributesHandler>();
 builder.Services.AddScoped<IMessageHandler<SetTargetMessage>, SetTargetHandler>();
 builder.Services.AddScoped<IMessageHandler<SetAttackStyleMessage>, SetAttackStyleHandler>();
-builder.Services.AddScoped<IMessageHandler<DropItemMessage>, DropItemHandler>();
+builder.Services.AddScoped<IMessageHandler<ItemActionMessage>, ItemActionHandler>();
 
 // Communication handlers
 builder.Services.AddScoped<IMessageHandler<ChatMessage>, ChatHandler>();

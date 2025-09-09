@@ -9,8 +9,7 @@ public enum TargetType
     None = 0,       // No target
     Player = 1,     // Player character
     NPC = 2,        // Non-player character
-    GroundItem = 3, // Item on the ground (same value as Object for compatibility)
-    GameObject = 4  // Future: doors, chests, etc.
+    GroundItem = 3 // Item on the ground (same value as Object for compatibility)
 }
 
 /// <summary>
