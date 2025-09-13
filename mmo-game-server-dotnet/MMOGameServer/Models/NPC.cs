@@ -2,18 +2,21 @@ using MMOGameServer.Models.Snapshots;
 
 namespace MMOGameServer.Models;
 
-// NPCAIState removed - using CombatState from Character base class
-
 public class NPC : Character
 {
     private static int _nextNpcId = 1;
     private const int MaxNpcId = 100000; // Wrap at 100k to prevent overflow
+
+
+    // Database index 'type' id for the NPC (non unique per instance)
+    public int TypeID { get; set; }
     
-    private int _id;
-    public override int Id => _id;
+    // Runtime instance id of the character (unique per instance)
+    private int _instanceId;
+    public override int Id => _instanceId;
+
     public int ZoneId { get; set; }
     public NPCZone Zone { get; set; }
-    public string Type { get; set; }
     public override int X { get; set; }
     public override int Y { get; set; }
     public override bool IsDirty { get; set; }
@@ -29,16 +32,16 @@ public class NPC : Character
     // Roaming behavior
     public DateTime? NextRoamTime { get; set; }
     
-    public NPC(int zoneId, NPCZone zone, string type, int x, int y)
+    public NPC(int zoneId, NPCZone zone, int type, int x, int y)
     {
-        _id = _nextNpcId++;
+        _instanceId = _nextNpcId++;
         if (_nextNpcId > MaxNpcId)
         {
             _nextNpcId = 1; // Wrap back to 1 (not 0, to avoid confusion with "no target")
         }
         ZoneId = zoneId;
         Zone = zone;
-        Type = type;
+        TypeID = type;
         X = x;
         Y = y;
         // Don't mark as dirty on creation - NPCs are sent via NpcsToLoad when first visible
@@ -52,13 +55,10 @@ public class NPC : Character
     private void InitializeNPCSkills()
     {
         // Base health for different NPC types (can be customized per type later)
-        switch (Type)
+        switch (TypeID)
         {
-            case "goblin":
+            case 0: //"goblin"
                 InitializeSkill(SkillType.HEALTH, 5);
-                break;
-            case "guard":
-                InitializeSkill(SkillType.HEALTH, 20);
                 break;
             default:
                 InitializeSkill(SkillType.HEALTH, 8); // Default NPC health
@@ -82,7 +82,7 @@ public class NPC : Character
         var snapshot = new NPCSnapshot
         {
             Id = Id,
-            Type = Type,
+            Type = TypeID,
             X = X,
             Y = Y,
             IsMoving = IsMoving,

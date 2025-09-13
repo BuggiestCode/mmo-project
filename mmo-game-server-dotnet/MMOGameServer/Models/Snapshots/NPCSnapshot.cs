@@ -13,8 +13,8 @@ public class NPCSnapshot
     [JsonPropertyName("id")]
     public int Id { get; set; }
     
-    [JsonPropertyName("type")]
-    public string Type { get; set; } = string.Empty;
+    [JsonPropertyName("typeID")]
+    public int Type { get; set; }
     
     [JsonPropertyName("x")]
     public int X { get; set; }

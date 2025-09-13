@@ -15,7 +15,7 @@ public class NPCZone
     public int RootChunkY { get; set; }
     
     // NPC spawn parameters
-    public string NPCType { get; set; }
+    public int NPCType { get; set; }
     public int MaxNPCCount { get; set; }
     public float NPCRespawnTimeSeconds { get; set; } = 30.0f;
     
@@ -27,7 +27,7 @@ public class NPCZone
     public List<NPC> NPCs { get; set; } = new();
     public Dictionary<int, DateTime> RespawnTimers { get; set; } = new();
     
-    public NPCZone(int id, int minX, int minY, int maxX, int maxY, string npcType, int maxNpcCount)
+    public NPCZone(int id, int minX, int minY, int maxX, int maxY, int npcType, int maxNpcCount)
     {
         Id = id;
         MinX = minX;

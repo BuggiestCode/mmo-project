@@ -303,7 +303,7 @@ public class NPCService
     {
         try
         {
-            _logger.LogInformation($"NPC {npc.Id} (type: {npc.Type}) has died at ({npc.X}, {npc.Y})");
+            _logger.LogInformation($"NPC {npc.Id} (type: {npc.TypeID}) has died at ({npc.X}, {npc.Y})");
         
             // Clear target relationships
             npc.OnRemove();
@@ -516,7 +516,7 @@ public class NPCService
             var minY = zoneData.GetProperty("minY").GetInt32();
             var maxX = zoneData.GetProperty("maxX").GetInt32();
             var maxY = zoneData.GetProperty("maxY").GetInt32();
-            var npcType = zoneData.GetProperty("npcType").GetString() ?? "default";
+            var npcType = zoneData.GetProperty("npcType").GetInt32();
             var maxNpcCount = zoneData.GetProperty("maxCount").GetInt32();
 
             var zone = new NPCZone(zoneId, minX, minY, maxX, maxY, npcType, maxNpcCount)
@@ -604,7 +604,7 @@ public class NPCService
                         var minY = zoneElement.GetProperty("minY").GetInt32();
                         var maxX = zoneElement.GetProperty("maxX").GetInt32();
                         var maxY = zoneElement.GetProperty("maxY").GetInt32();
-                        var npcType = zoneElement.GetProperty("npcType").GetString() ?? "default";
+                        var npcType = zoneElement.GetProperty("npcType").GetInt32();
                         var maxNpcCount = zoneElement.GetProperty("maxCount").GetInt32();
                         
                         var zone = new NPCZone(zoneId, minX, minY, maxX, maxY, npcType, maxNpcCount)
