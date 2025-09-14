@@ -1,0 +1,51 @@
+[
+  {
+    "uid": 0,
+    "stackSize": 1,
+    "value": 1,
+    "weight": 0.1,
+    "tradeable": true,
+    "droppable": true,
+    "options": [
+      {
+        "action": "Eat",
+        "effects": [
+          {
+            "type": "Heal",
+            "amount": 10,
+            "overTime": false,
+            "duration": 0
+          },
+          {
+            "type": "ConsumeItem"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "uid": 1,
+    "stackSize": 1,
+    "value": 1,
+    "weight": 0.1,
+    "tradeable": true,
+    "droppable": true,
+    "options": [
+      {
+        "action": "Drink",
+        "effects": [
+          {
+            "type": "ConsumeItem"
+          },
+          {
+            "type": "BuffStat",
+            "amount": 10,
+            "overTime": false,
+            "duration": 20,
+            "stat": "attack"
+          }
+        ]
+      }
+    ]
+  }
+]
