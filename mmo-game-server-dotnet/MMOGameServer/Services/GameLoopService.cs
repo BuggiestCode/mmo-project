@@ -20,20 +20,17 @@ public class GameLoopService : BackgroundService
     private readonly int _tickRate = 500; // 500ms tick rate matching JavaScript
     private readonly Timer _heartbeatTimer;
     private readonly Timer? _npcAuditTimer;
-    private readonly GameDataLoaderService _gameData;
     
     public GameLoopService(
         GameWorldService gameWorld,
         TerrainService terrainService,
         DatabaseService databaseService,
-        GameDataLoaderService gameData,
         ILogger<GameLoopService> logger,
         NPCService? npcService = null,
         PlayerService? playerService = null,
         CombatService? combatService = null)
     {
         _gameWorld = gameWorld;
-        _gameData = gameData;
         _terrainService = terrainService;
         _databaseService = databaseService;
         _npcService = npcService;

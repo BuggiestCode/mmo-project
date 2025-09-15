@@ -1,4 +1,4 @@
 TableName,Description,Entries
-FoodTable,Food and buff items.,"Item:0:1:1:100;Item:0:1:1:100"
+FoodTable,Food and buff items.,"Item:0:1:1:100"
 DrinkTable,Contains Drinks.,"Item:1:1:1:100"
 MainLootTable,Collection of generic loot,"Table:0:1:1:100;Table:1:1:1:100"

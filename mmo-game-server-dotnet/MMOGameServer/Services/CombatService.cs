@@ -17,15 +17,17 @@ public class CombatAttack
 public class CombatService
 {
     private readonly TerrainService _terrainService;
+    private readonly GameDataLoaderService _gameData;
     private readonly ILogger<CombatService> _logger;
     private readonly List<CombatAttack> _currentTickAttacks = new();
 
     // Use a shared RNG for combat
     private static readonly Random Rng = Random.Shared;
         
-    public CombatService(TerrainService terrainService, ILogger<CombatService> logger)
+    public CombatService(TerrainService terrainService, GameDataLoaderService gameData, ILogger<CombatService> logger)
     {
         _terrainService = terrainService;
+        _gameData = gameData;
         _logger = logger;
     }
     
@@ -187,7 +189,20 @@ public class CombatService
 
         // Calculate damage (can be expanded with attack/strength skills later)
         var damage = CalculateDamage(attacker, target);
-        target.TakeDamage(damage);
+
+        // Is still alive post take damage?
+        if (!target.TakeDamage(damage))
+        {
+            if (target is NPC)
+            {
+                // IGNORE ITEM COUNTS FOR NOW (ToDo)
+                List<(int, int)> drops = _gameData.RollNPCDrops(((NPC)target).TypeID);
+                foreach ((int, int) drop in drops)
+                {
+                    _terrainService.AddGroundItem(target.X, target.Y, drop.Item1);
+                }
+            }
+        }
         
         // We have our performed action for this tick (we probably need some sort of blocking system for actions (integrated with a first action 2nd action system.))
         attacker.PerformedAction = 1;

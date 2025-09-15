@@ -63,23 +63,26 @@ public abstract class Character : ITargetable
     // Damage tracking for visualization
     public List<int> DamageTakenThisTick { get; private set; } = new();
     public List<int> DamageTakenLastTick { get; private set; } = new();
-    
-    public void TakeDamage(int amount)
+
+    public bool TakeDamage(int amount)
     {
         DamageTakenThisTick.Add(amount);
         IsDirty = true;
-        
+
         // Apply damage to health skill (regen counter is reset in Skill.Modify)
         if (HealthSkill != null)
         {
-            var actualDamage = HealthSkill.Modify(-amount);
-            
+            HealthSkill.Modify(-amount); // var actualDamage = ?
+
             // Check for death
             if (CurrentHealth <= 0)
             {
                 OnDeath();
+                return false;
             }
         }
+
+        return true;
     }
     
     /// <summary>

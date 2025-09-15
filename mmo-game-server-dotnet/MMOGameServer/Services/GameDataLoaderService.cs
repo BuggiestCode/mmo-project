@@ -14,7 +14,7 @@ public class GameDataLoaderService
     private const string NPC_CSV_PATH = "npcs/npc_definitions.csv";
     private const string ITEMS_JSON_PATH = "items/items.json";
     private const string DROP_TABLES_CSV_PATH = "items/dropTables/drop_tables.csv";
-    
+
     public GameDataLoaderService(ILogger<GameDataLoaderService> logger)
     {
         _logger = logger;
@@ -248,21 +248,30 @@ public class GameDataLoaderService
     public IReadOnlyDictionary<int, DropTableDefinition> GetAllDropTables() => _dropTableDefinitions;
     
     // Drop table rolling logic
-    public List<(int itemId, int quantity)> RollDropTable(int dropTableId)
+    public List<(int itemId, int quantity)> RollDropTable(int dropTableId, int depth = 0)
     {
+        const int MAX_DEPTH = 10; // Prevent infinite recursion
+
+        if (depth >= MAX_DEPTH)
+        {
+            Console.WriteLine($"Warning: Drop table recursion depth limit reached for table {dropTableId}");
+            return new List<(int, int)>();
+        }
+
         var dropTable = GetDropTable(dropTableId);
         if (dropTable == null) return new List<(int, int)>();
-        
-        return RollDropTableEntries(dropTable.Entries);
+
+        return RollDropTableEntries(dropTable.Entries, depth);
     }
     
     public List<(int itemId, int quantity)> RollNPCDrops(int npcUid)
     {
         var npc = GetNPC(npcUid);
+
         if (npc == null) return new List<(int, int)>();
         
         var drops = new List<(int itemId, int quantity)>();
-        
+
         // Roll main drops (weighted selection)
         if (npc.Drops.Any())
         {
@@ -276,11 +285,11 @@ public class GameDataLoaderService
                 }
                 else // DropType.Table
                 {
-                    drops.AddRange(RollDropTable(selectedDrop.Id));
+                    drops.AddRange(RollDropTable(selectedDrop.Id, depth + 1));
                 }
             }
         }
-        
+
         // Roll tertiary drops (each has independent chance)
         foreach (var tertiaryDrop in npc.TertiaryDrops)
         {
@@ -290,11 +299,11 @@ public class GameDataLoaderService
                 drops.Add((tertiaryDrop.ItemId, quantity));
             }
         }
-        
+    
         return drops;
     }
     
-    private List<(int itemId, int quantity)> RollDropTableEntries(List<DropTableEntry> entries)
+    private List<(int itemId, int quantity)> RollDropTableEntries(List<DropTableEntry> entries, int depth = 0)
     {
         var drops = new List<(int itemId, int quantity)>();
         
@@ -317,7 +326,7 @@ public class GameDataLoaderService
                 }
                 else // DropType.Table - recursive roll
                 {
-                    drops.AddRange(RollDropTable(entry.Id));
+                    drops.AddRange(RollDropTable(entry.Id, depth + 1));
                 }
                 break;
             }

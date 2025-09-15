@@ -12,7 +12,7 @@ public class NPC : Character
     // Database index 'type' id for the NPC (non unique per instance)
     private NPCDefinition npcDefinition;
     public int TypeID { get { return npcDefinition.Uid; } }
-    
+
     // Runtime instance id of the character (unique per instance)
     private int _instanceId;
     public override int Id => _instanceId;
@@ -24,16 +24,16 @@ public class NPC : Character
     public override bool IsDirty { get; set; }
 
     // NPC-specific properties
-    public override int AttackCooldown { get{ return npcDefinition.AttackSpeedTicks; } } // e.g. 4 ticks between attacks would be 2 seconds at 500ms tick rate
-    
+    public override int AttackCooldown { get { return npcDefinition.AttackSpeedTicks; } } // e.g. 4 ticks between attacks would be 2 seconds at 500ms tick rate
+
     // ITargetable implementation - I am an NPC type target
     public override TargetType SelfTargetType => TargetType.NPC;
-    
+
     public float AggroRange { get; set; } = 5.0f; // 5 tiles aggro range
-    
+
     // Roaming behavior
     public DateTime? NextRoamTime { get; set; }
-    
+
     public NPC(int zoneId, NPCZone zone, NPCDefinition npcDef, int x, int y)
     {
         _instanceId = _nextNpcId++;
@@ -49,18 +49,18 @@ public class NPC : Character
         // Don't mark as dirty on creation - NPCs are sent via NpcsToLoad when first visible
         // Only mark dirty when they actually change (move, take damage, etc.)
         IsDirty = false;
-        
+
         // Initialize skills based on NPC type
         InitializeNPCSkills(npcDef.HealthLevel, npcDef.AttackLevel, npcDef.DefenceLevel);
     }
-    
+
     private void InitializeNPCSkills(int healthLVL, int attackLVL, int defenceLVL)
     {
         InitializeSkill(SkillType.HEALTH, healthLVL);
         InitializeSkill(SkillType.ATTACK, attackLVL);
         InitializeSkill(SkillType.DEFENCE, defenceLVL);
     }
-    
+
     // Override SetTarget to reset roam timer when leaving combat
     public override void SetTarget(ITargetable? target)
     {
