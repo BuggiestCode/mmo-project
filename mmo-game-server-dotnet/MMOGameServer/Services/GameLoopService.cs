@@ -20,27 +20,30 @@ public class GameLoopService : BackgroundService
     private readonly int _tickRate = 500; // 500ms tick rate matching JavaScript
     private readonly Timer _heartbeatTimer;
     private readonly Timer? _npcAuditTimer;
+    private readonly GameDataLoaderService _gameData;
     
     public GameLoopService(
-        GameWorldService gameWorld, 
+        GameWorldService gameWorld,
         TerrainService terrainService,
         DatabaseService databaseService,
+        GameDataLoaderService gameData,
         ILogger<GameLoopService> logger,
         NPCService? npcService = null,
         PlayerService? playerService = null,
         CombatService? combatService = null)
     {
         _gameWorld = gameWorld;
+        _gameData = gameData;
         _terrainService = terrainService;
         _databaseService = databaseService;
         _npcService = npcService;
         _playerService = playerService;
         _combatService = combatService;
         _logger = logger;
-        
+
         // Separate timer for heartbeat/cleanup (30 seconds)
         _heartbeatTimer = new Timer(HeartbeatClients, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
-        
+
         // NPC audit timer (10 seconds) - only if NPCService is available
         if (_npcService != null)
         {

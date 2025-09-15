@@ -1,0 +1,11 @@
+// UPDATE FOR Program.cs
+// Add this line after line 19 (before other services):
+
+builder.Services.AddSingleton<GameDataLoaderService>(); // Load game data at startup
+
+// The complete section should look like:
+// Register core services as singletons for shared state
+builder.Services.AddSingleton<GameDataLoaderService>(); // Load game data at startup
+builder.Services.AddSingleton<DatabaseService>();
+builder.Services.AddSingleton<GameWorldService>();
+// ... rest of services

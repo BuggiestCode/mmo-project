@@ -19,10 +19,27 @@
     <!-- Prevent automatic copying of terrain files - handled by Dockerfile in production -->
     <Content Remove="terrain\**\*.json" />
     
+    <!-- Remove automatic inclusion of items JSON to avoid duplicates -->
+    <Content Remove="items\**\*.json" />
+
     <!-- Include XP thresholds CSV for deployment -->
     <Content Include="levels\xp_thresholds.csv">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+
+    <!-- Include NPC definitions for deployment -->
+    <Content Include="npcs\**\*.csv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    
+    <!-- Include item definitions and drop tables for deployment -->
+    <Content Include="items\**\*.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="items\**\*.csv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+
   </ItemGroup>
 
 </Project>

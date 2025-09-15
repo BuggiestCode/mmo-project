@@ -1,3 +1,4 @@
+using MMOGameServer.Models.GameData;
 using MMOGameServer.Models.Snapshots;
 
 namespace MMOGameServer.Models;
@@ -9,7 +10,8 @@ public class NPC : Character
 
 
     // Database index 'type' id for the NPC (non unique per instance)
-    public int TypeID { get; set; }
+    private NPCDefinition npcDefinition;
+    public int TypeID { get { return npcDefinition.Uid; } }
     
     // Runtime instance id of the character (unique per instance)
     private int _instanceId;
@@ -20,9 +22,9 @@ public class NPC : Character
     public override int X { get; set; }
     public override int Y { get; set; }
     public override bool IsDirty { get; set; }
-    
+
     // NPC-specific properties
-    public override int AttackCooldown => 4; // 4 ticks between attacks (2 seconds at 500ms tick rate)
+    public override int AttackCooldown { get{ return npcDefinition.AttackSpeedTicks; } } // e.g. 4 ticks between attacks would be 2 seconds at 500ms tick rate
     
     // ITargetable implementation - I am an NPC type target
     public override TargetType SelfTargetType => TargetType.NPC;
@@ -32,7 +34,7 @@ public class NPC : Character
     // Roaming behavior
     public DateTime? NextRoamTime { get; set; }
     
-    public NPC(int zoneId, NPCZone zone, int type, int x, int y)
+    public NPC(int zoneId, NPCZone zone, NPCDefinition npcDef, int x, int y)
     {
         _instanceId = _nextNpcId++;
         if (_nextNpcId > MaxNpcId)
@@ -41,7 +43,7 @@ public class NPC : Character
         }
         ZoneId = zoneId;
         Zone = zone;
-        TypeID = type;
+        npcDefinition = npcDef;
         X = x;
         Y = y;
         // Don't mark as dirty on creation - NPCs are sent via NpcsToLoad when first visible
@@ -49,21 +51,14 @@ public class NPC : Character
         IsDirty = false;
         
         // Initialize skills based on NPC type
-        InitializeNPCSkills();
+        InitializeNPCSkills(npcDef.HealthLevel, npcDef.AttackLevel, npcDef.DefenceLevel);
     }
     
-    private void InitializeNPCSkills()
+    private void InitializeNPCSkills(int healthLVL, int attackLVL, int defenceLVL)
     {
-        // Base health for different NPC types (can be customized per type later)
-        switch (TypeID)
-        {
-            case 0: //"goblin"
-                InitializeSkill(SkillType.HEALTH, 5);
-                break;
-            default:
-                InitializeSkill(SkillType.HEALTH, 8); // Default NPC health
-                break;
-        }
+        InitializeSkill(SkillType.HEALTH, healthLVL);
+        InitializeSkill(SkillType.ATTACK, attackLVL);
+        InitializeSkill(SkillType.DEFENCE, defenceLVL);
     }
     
     // Override SetTarget to reset roam timer when leaving combat

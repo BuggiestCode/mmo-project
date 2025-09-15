@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using MMOGameServer.Models;
+using MMOGameServer.Models.GameData;
 
 namespace MMOGameServer.Services;
 
@@ -11,6 +12,7 @@ public class NPCService
     private readonly GameWorldService _gameWorld;
     private readonly CombatService _combatService;
     private readonly ILogger<NPCService> _logger;
+    private readonly GameDataLoaderService _gameDataService;
     private readonly ConcurrentDictionary<string, NPCZone> _zones = new();
     private readonly ConcurrentDictionary<int, NPC> _allNpcs = new();
     private readonly Random _random = new();
@@ -24,9 +26,10 @@ public class NPCService
     // Visibility tracking for NPCs (similar to players)
     private readonly ConcurrentDictionary<int, (HashSet<int> newlyVisible, HashSet<int> noLongerVisible)> _pendingNpcVisibilityChanges = new();
     
-    public NPCService(TerrainService terrainService, PathfindingService pathfindingService, GameWorldService gameWorld, CombatService combatService, ILogger<NPCService> logger)
+    public NPCService(TerrainService terrainService, GameDataLoaderService gameDataLoaderService, PathfindingService pathfindingService, GameWorldService gameWorld, CombatService combatService, ILogger<NPCService> logger)
     {
         _terrainService = terrainService;
+        _gameDataService = gameDataLoaderService;
         _pathfindingService = pathfindingService;
         _gameWorld = gameWorld;
         _combatService = combatService;
@@ -35,7 +38,7 @@ public class NPCService
         // Check for warm zones that should transition to cold every 5 seconds
         _cooldownTimer = new Timer(ProcessZoneCooldowns, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
-    
+
     /// <summary>
     /// Spawns a single NPC in the specified zone at a random walkable position
     /// </summary>
@@ -49,10 +52,10 @@ public class NPCService
             _logger.LogWarning($"Zone {zone.Id} already has {zone.NPCs.Count}/{zone.MaxNPCCount} NPCs, skipping spawn");
             return null;
         }
-        
+
         int x = 0, y = 0;
         bool foundWalkableSpawn = false;
-        
+
         // Try up to configured max times to find a walkable spawn point
         for (int attempt = 0; attempt < _maxSpawnRetries; attempt++)
         {
@@ -65,27 +68,33 @@ public class NPCService
                 break;
             }
         }
-        
+
         if (!foundWalkableSpawn)
         {
             _logger.LogWarning($"Failed to find walkable spawn point for NPC in zone {zone.Id} after {_maxSpawnRetries} attempts. Zone bounds: ({zone.MinX},{zone.MinY}) to ({zone.MaxX},{zone.MaxY})");
             return null;
         }
-        
-        var npc = new NPC(zone.Id, zone, zone.NPCType, x, y);
-        zone.NPCs.Add(npc);
-        _allNpcs[npc.Id] = npc;
-        
-        // Update chunk tracking
-        var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(x, y);
-        var chunkKey = $"{chunkX},{chunkY}";
-        if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+
+        NPCDefinition? npcDef = _gameDataService.GetNPC(zone.NPCType);
+        if (npcDef != null)
         {
-            chunk.NPCsOnChunk.Add(npc.Id);
+            var npc = new NPC(zone.Id, zone, npcDef, x, y);
+            zone.NPCs.Add(npc);
+            _allNpcs[npc.Id] = npc;
+
+            // Update chunk tracking
+            var (chunkX, chunkY) = _terrainService.WorldPositionToChunkCoord(x, y);
+            var chunkKey = $"{chunkX},{chunkY}";
+            if (_terrainService.TryGetChunk(chunkKey, out var chunk))
+            {
+                chunk.NPCsOnChunk.Add(npc.Id);
+            }
+
+            _logger.LogInformation($"Spawned NPC {npc.Id} of type '{zone.NPCType}' at ({x},{y})");
+            return npc;
         }
         
-        _logger.LogInformation($"Spawned NPC {npc.Id} of type '{zone.NPCType}' at ({x},{y})");
-        return npc;
+        return null;
     }
 
     private void SpawnNPCsInZone(NPCZone zone)

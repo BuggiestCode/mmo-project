@@ -282,6 +282,10 @@ public class CombatService
         int attRoll = Rng.Next(0, atk + 1);
         int defRoll = Rng.Next(0, def + 1);
 
-        return Math.Max(0, attRoll - defRoll);
+        // Raw damage may exceed remaining health
+        int potentialDamageRaw = Math.Max(0, attRoll - defRoll);
+
+        // Final damage is capped at the remaining health for the unit (per hit).
+        return Math.Min(potentialDamageRaw, target.CurrentHealth);
     }
 }
