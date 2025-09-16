@@ -17,6 +17,8 @@ public class NPC : Character
     private int _instanceId;
     public override int Id => _instanceId;
 
+    public bool IsAggressive{get{ return npcDefinition.IsAggressive; }}
+
     public int ZoneId { get; set; }
     public NPCZone Zone { get; set; }
     public override int X { get; set; }

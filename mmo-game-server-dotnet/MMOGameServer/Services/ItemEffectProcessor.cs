@@ -109,8 +109,16 @@ public class ItemEffectProcessor
         // TODO: Implement actual healing logic
         if (!overTime)
         {
-            // Modify but don't allow overheal -? parameter later
-            player.GetSkill(SkillType.HEALTH)?.Modify(Math.Min(player.CurrentHealth + amount, player.MaxHealth));
+            // Calculate actual heal amount to prevent overhealing
+            var healthSkill = player.GetSkill(SkillType.HEALTH);
+            if (healthSkill != null)
+            {
+                var currentHealth = healthSkill.CurrentValue;
+                var baseHealth = healthSkill.BaseLevel;
+                var actualHealAmount = Math.Min(amount, baseHealth - currentHealth);
+
+                healthSkill.Modify(actualHealAmount);
+            }
         }
         // else
         // {
@@ -135,11 +143,14 @@ public class ItemEffectProcessor
 
     private async Task ProcessBuffStat(Player player, ItemEffect effect)
     {
-        var stat = effect.GetString("stat", "strength");
-        var amount = effect.GetInt("amount", 5);
-        var duration = effect.GetInt("duration", 60);
+        SkillType stat;
+        if(Enum.TryParse(effect.GetString("stat", "attack").ToUpper(), out stat))
+        {
+            var amount = effect.GetInt("amount", 5);
+            var duration = effect.GetInt("duration", 60);
 
-        _logger.LogInformation($"BUFF STAT EFFECT: Player {player.UserId} - Stat: {stat}, Amount: +{amount}, Duration: {duration}s");
+            player.GetSkill(stat)?.Modify(amount);
+        }
 
         // TODO: Implement stat buffing logic
         // - Add buff to player's active buffs list

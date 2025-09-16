@@ -169,88 +169,88 @@ public class NPCService
         {
             // Check if current target is still valid (connected)
             if (npc.TargetCharacter != null)
-        {
-            // For now, only check if it's a player that disconnected
-            if (npc.TargetCharacter is Player targetPlayer)
             {
-                var targetStillConnected = _gameWorld.GetAuthenticatedClients()
-                    .Any(c => c.Player?.UserId == targetPlayer.UserId);
-                
-                if (!targetStillConnected)
+                // For now, only check if it's a player that disconnected
+                if (npc.TargetCharacter is Player targetPlayer)
+                {
+                    var targetStillConnected = _gameWorld.GetAuthenticatedClients()
+                        .Any(c => c.Player?.UserId == targetPlayer.UserId);
+                    
+                    if (!targetStillConnected)
+                    {
+                        npc.SetTarget(null);
+                        _logger.LogInformation($"NPC {npc.Id} lost target (player disconnected), returning to idle");
+                    }
+                }
+                // In future, add NPC target validation here
+            }
+            
+            // Check for target acquisition if idle
+            if (npc.CombatState == CombatState.Idle && npc.IsAggressive)
+            {
+                var authenticatedClients = _gameWorld.GetAuthenticatedClients();
+                foreach (var client in authenticatedClients)
+                {
+                    if (client.Player != null && client.Player.IsAlive && 
+                        _combatService.IsWithinRange(npc.X, npc.Y, client.Player.X, client.Player.Y, npc.AggroRange))
+                    {
+                        // Check if player is within the NPC's zone - only aggro if they are
+                        if (npc.Zone.ContainsPoint(client.Player.X, client.Player.Y, 1))
+                        {
+                            // Acquire target
+                            npc.SetTarget(client.Player);
+                            _logger.LogInformation($"NPC {npc.Id} acquired target player {client.Player.UserId}");
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Handle movement based on state
+            if (npc.CombatState == CombatState.InCombat && npc.TargetCharacter != null)
+            {
+                // Check if target is still valid
+                if (!npc.TargetCharacter.IsAlive)
                 {
                     npc.SetTarget(null);
-                    _logger.LogInformation($"NPC {npc.Id} lost target (player disconnected), returning to idle");
+                    _logger.LogInformation($"NPC {npc.Id} lost target (dead), returning to idle");
+                    await ProcessIdleMovement(npc);
+                    return;
                 }
-            }
-            // In future, add NPC target validation here
-        }
-        
-        // Check for target acquisition if idle
-        if (npc.CombatState == CombatState.Idle)
-        {
-            var authenticatedClients = _gameWorld.GetAuthenticatedClients();
-            foreach (var client in authenticatedClients)
-            {
-                if (client.Player != null && client.Player.IsAlive && 
-                    _combatService.IsWithinRange(npc.X, npc.Y, client.Player.X, client.Player.Y, npc.AggroRange))
+                
+                var targetX = npc.TargetCharacter.X;
+                var targetY = npc.TargetCharacter.Y;
+                
+                // If not adjacent, take greedy step toward target
+                if (!_combatService.IsAdjacentCardinal(npc.X, npc.Y, targetX, targetY))
                 {
-                    // Check if player is within the NPC's zone - only aggro if they are
-                    if (npc.Zone.ContainsPoint(client.Player.X, client.Player.Y, 1))
+                    var greedyStep = _combatService.GetGreedyStep(npc, targetX, targetY);
+                    if (greedyStep.HasValue)
                     {
-                        // Acquire target
-                        npc.SetTarget(client.Player);
-                        _logger.LogInformation($"NPC {npc.Id} acquired target player {client.Player.UserId}");
-                        break;
+                        // Check if move would take us out of zone
+                        if (!npc.Zone.ContainsPoint(greedyStep.Value.x, greedyStep.Value.y))
+                        {
+                            // Would leave zone, return to idle
+                            npc.SetTarget(null);
+                            _logger.LogInformation($"NPC {npc.Id} cannot pursue target out of zone, returning to idle");
+                            await ProcessIdleMovement(npc);
+                            return;
+                        }
+                        
+                        // Only update position if we actually moved (single-step combat movement)
+                        if (greedyStep.Value.x != npc.X || greedyStep.Value.y != npc.Y)
+                        {
+                            // We stepped this tick, we are moving.
+                            UpdateNPCPosition(npc, greedyStep.Value.x, greedyStep.Value.y);
+                        }
                     }
                 }
             }
-        }
-        
-        // Handle movement based on state
-        if (npc.CombatState == CombatState.InCombat && npc.TargetCharacter != null)
-        {
-            // Check if target is still valid
-            if (!npc.TargetCharacter.IsAlive)
+            else
             {
-                npc.SetTarget(null);
-                _logger.LogInformation($"NPC {npc.Id} lost target (dead), returning to idle");
+                // Idle movement
                 await ProcessIdleMovement(npc);
-                return;
             }
-            
-            var targetX = npc.TargetCharacter.X;
-            var targetY = npc.TargetCharacter.Y;
-            
-            // If not adjacent, take greedy step toward target
-            if (!_combatService.IsAdjacentCardinal(npc.X, npc.Y, targetX, targetY))
-            {
-                var greedyStep = _combatService.GetGreedyStep(npc, targetX, targetY);
-                if (greedyStep.HasValue)
-                {
-                    // Check if move would take us out of zone
-                    if (!npc.Zone.ContainsPoint(greedyStep.Value.x, greedyStep.Value.y))
-                    {
-                        // Would leave zone, return to idle
-                        npc.SetTarget(null);
-                        _logger.LogInformation($"NPC {npc.Id} cannot pursue target out of zone, returning to idle");
-                        await ProcessIdleMovement(npc);
-                        return;
-                    }
-                    
-                    // Only update position if we actually moved (single-step combat movement)
-                    if (greedyStep.Value.x != npc.X || greedyStep.Value.y != npc.Y)
-                    {
-                        // We stepped this tick, we are moving.
-                        UpdateNPCPosition(npc, greedyStep.Value.x, greedyStep.Value.y);
-                    }
-                }
-            }
-        }
-        else
-        {
-            // Idle movement
-            await ProcessIdleMovement(npc);
-        }
         }
         catch (Exception ex)
         {

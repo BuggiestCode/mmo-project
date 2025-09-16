@@ -128,23 +128,49 @@ public class Player : Character
     public override void OnDeath()
     {
         Console.WriteLine($"Player {UserId} has died at ({X:F2}, {Y:F2})! Setting up respawn delay...");
-        
+
         // Store death location for logging
         DeathLocation = (X, Y);
-        
+
         // Clear combat state and paths (base class handles target cleanup)
         base.OnDeath();
-        
+
         // Clear any active movement
         ClearPath();
-        
+
         // Set respawn delay (n ticks = n*2 second at 500ms tick rate)
         RespawnTicksRemaining = respawnTickCount;
-        
+
         // Force dirty flag for immediate update (client sees death state)
         IsDirty = true;
-        
-        Console.WriteLine($"Player {UserId} will respawn in {RespawnTicksRemaining} ticks");
+    }
+
+    /// <summary>
+    /// Gets all items that should be dropped on death and clears the inventory
+    /// </summary>
+    /// <returns>A list of (itemId, slotIndex) tuples representing items to drop</returns>
+    public List<(int itemId, int slotIndex)> GetAndClearDeathDrops()
+    {
+        var itemsToDrop = new List<(int itemId, int slotIndex)>();
+
+        // Collect all non-empty inventory slots
+        for (int i = 0; i < Inventory.Length; i++)
+        {
+            if (Inventory[i] != -1)
+            {
+                itemsToDrop.Add((Inventory[i], i));
+                Inventory[i] = -1; // Clear the slot
+            }
+        }
+
+        // Mark inventory as dirty if we dropped anything
+        if (itemsToDrop.Count > 0)
+        {
+            InventoryDirty = true;
+            IsDirty = true;
+        }
+
+        return itemsToDrop;
     }
     
     /// <summary>

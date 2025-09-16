@@ -240,14 +240,14 @@ public class InventoryService
 
         // Add the item to the ground at the player's current position
         bool dropped = _terrainService.AddGroundItem(player.X, player.Y, itemId);
-        
+
         if (dropped)
         {
             // Remove from inventory
             player.Inventory[slotIndex] = -1;
             player.InventoryDirty = true;
             player.IsDirty = true;
-            
+
             _logger.LogInformation($"Player {player.UserId} dropped item type ({itemId}) from slot ({slotIndex}) at ({player.X}, {player.Y})");
             return true;
         }
@@ -257,4 +257,5 @@ public class InventoryService
             return false;
         }
     }
+
 }

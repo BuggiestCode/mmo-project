@@ -300,18 +300,33 @@ public class GameLoopService : BackgroundService
                 // Check if player died this tick
                 if (!client.Player.IsAlive && !client.Player.IsAwaitingRespawn)
                 {
+                    // This is redundant - OnDeath is already called from TakeDamage
+                    // But keeping it as a safety check for any edge cases
                     client.Player.OnDeath();
-                }
-                // Check if player should respawn this tick
+                }// Check if player should respawn this tick
                 else if (client.Player.IsAwaitingRespawn)
                 {
                     client.Player.RespawnTicksRemaining--;
-                    
+
                     if (client.Player.RespawnTicksRemaining <= 0)
                     {
+                        // Drop all items at death location before respawning
+                        var itemsToDrop = client.Player.GetAndClearDeathDrops();
+
+                        if (itemsToDrop.Count > 0 && client.Player.DeathLocation.HasValue)
+                        {
+                            var deathX = (int)client.Player.DeathLocation.Value.x;
+                            var deathY = (int)client.Player.DeathLocation.Value.y;
+
+                            foreach (var (itemId, slotIndex) in itemsToDrop)
+                            {
+                                _terrainService.AddGroundItem(deathX, deathY, itemId);
+                            }
+                        }
+
                         // Perform the actual respawn
                         client.Player.PerformRespawn();
-                        
+
                         // Player position changed significantly, trigger chunk update
                         _terrainService.UpdatePlayerChunk(client.Player, client.Player.X, client.Player.Y);
                     }
