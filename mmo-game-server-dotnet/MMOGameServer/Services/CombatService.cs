@@ -191,7 +191,7 @@ public class CombatService
         var damage = CalculateDamage(attacker, target);
 
         // Is still alive post take damage?
-        if (!target.TakeDamage(damage))
+        if (!target.TakeDamage(damage, attacker))
         {
             if (target is NPC)
             {

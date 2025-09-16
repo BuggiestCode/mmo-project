@@ -73,6 +73,20 @@ public class NPC : Character
         }
     }
 
+    // Override TakeDamage to handle combat initiation when attacked
+    public override bool TakeDamage(int amount, Character? attacker = null)
+    {
+        // If we're being attacked and don't have a target, set the attacker as our target
+        // This allows non-aggressive NPCs to fight back when attacked
+        if (attacker != null && attacker.IsAlive && CurrentTarget == null)
+        {
+            SetTarget(attacker);
+        }
+
+        // Call base implementation to apply damage
+        return base.TakeDamage(amount, attacker);
+    }
+
     public NPCSnapshot GetSnapshot()
     {
         var damageSplats = GetTopDamageThisTick();

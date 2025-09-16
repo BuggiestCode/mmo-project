@@ -64,7 +64,7 @@ public abstract class Character : ITargetable
     public List<int> DamageTakenThisTick { get; private set; } = new();
     public List<int> DamageTakenLastTick { get; private set; } = new();
 
-    public bool TakeDamage(int amount)
+    public virtual bool TakeDamage(int amount, Character? attacker = null)
     {
         DamageTakenThisTick.Add(amount);
         IsDirty = true;
