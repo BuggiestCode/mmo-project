@@ -1,21 +1,5 @@
 -- Recreate cleanly
 DROP TABLE IF EXISTS players CASCADE;
-DROP TYPE  IF EXISTS item_stack CASCADE;
-
-CREATE TYPE item_stack AS (
-  item_id integer,
-  qty     integer
-);
-
--- Helper function allowed in CHECK (no table refs, marked IMMUTABLE)
-CREATE OR REPLACE FUNCTION all_qty_nonneg(inv item_stack[])
-RETURNS boolean
-LANGUAGE sql
-IMMUTABLE
-AS $$
-  SELECT COALESCE(BOOL_AND( (e IS NULL) OR (e.qty >= 0) ), TRUE)
-  FROM unnest(inv) AS e
-$$;
 
 CREATE TABLE players (
   id                         SERIAL   PRIMARY KEY,
@@ -41,6 +25,5 @@ CREATE TABLE players (
   skill_defence_cur_level    SMALLINT  NOT NULL DEFAULT 1,
   skill_defence_xp           INTEGER   NOT NULL DEFAULT 0,
 
-  inventory                  item_stack[] NOT NULL
-                             DEFAULT array_fill(NULL::item_stack, ARRAY[30])
+  inventory                  JSONB NOT NULL DEFAULT '[]'::jsonb
 );

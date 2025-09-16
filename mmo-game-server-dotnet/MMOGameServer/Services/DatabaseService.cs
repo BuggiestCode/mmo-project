@@ -1,5 +1,6 @@
 using Npgsql;
 using System.Text.Json;
+using System.Linq;
 using MMOGameServer.Models;
 
 namespace MMOGameServer.Services;
@@ -65,7 +66,8 @@ public class DatabaseService
             "boots_swatch_col_index, hair_style_index, facial_hair_style_index, is_male, " +
             "skill_health_cur_level, skill_health_xp, " +
             "skill_attack_cur_level, skill_attack_xp, " +
-            "skill_defence_cur_level, skill_defence_xp " +
+            "skill_defence_cur_level, skill_defence_xp, " +
+            "inventory " +
             "FROM players WHERE user_id = @userId", conn);
         selectCmd.Parameters.AddWithValue("userId", userId);
 
@@ -90,7 +92,10 @@ public class DatabaseService
             
             // Load skill data from database
             LoadPlayerSkillsFromReader(player, reader);
-            
+
+            // Load inventory from database (column 18)
+            LoadPlayerInventoryFromReader(player, reader, 18);
+
             Console.WriteLine($"Loaded existing player {userId} at ({player.X}, {player.Y}) with look: hair={player.HairColSwatchIndex}, skin={player.SkinColSwatchIndex}, under={player.UnderColSwatchIndex}, boots={player.BootsColSwatchIndex}, style={player.HairStyleIndex}, facialHair={player.FacialHairStyleIndex}, isMale={player.IsMale}");
             return player;
         }
@@ -142,20 +147,114 @@ public class DatabaseService
         var healthCurLevel = reader.IsDBNull(12) ? 10 : reader.GetInt16(12);
         var healthXP = reader.IsDBNull(13) ? Skill.GetXPForLevel(Player.StartHealthLevel) : reader.GetInt32(13);
         player.InitializeSkillFromXP(SkillType.HEALTH, healthXP, healthCurLevel);
-        
+
         // Load Attack skill (columns 14, 15)
         var attackCurLevel = reader.IsDBNull(14) ? 1 : reader.GetInt16(14);
         var attackXP = reader.IsDBNull(15) ? 0 : reader.GetInt32(15);
         player.InitializeSkillFromXP(SkillType.ATTACK, attackXP, attackCurLevel);
-        
+
         // Load Defence skill (columns 16, 17)
         var defenceCurLevel = reader.IsDBNull(16) ? 1 : reader.GetInt16(16);
         var defenceXP = reader.IsDBNull(17) ? 0 : reader.GetInt32(17);
         player.InitializeSkillFromXP(SkillType.DEFENCE, defenceXP, defenceCurLevel);
-        
+
         Console.WriteLine($"Loaded skills - Health: {healthCurLevel} (XP: {healthXP}), Attack: {attackCurLevel} (XP: {attackXP}), Defence: {defenceCurLevel} (XP: {defenceXP})");
     }
-    
+
+    /// <summary>
+    /// Loads player inventory from database reader
+    /// Deserializes JSONB array into C# int array
+    /// </summary>
+    private void LoadPlayerInventoryFromReader(Player player, NpgsqlDataReader reader, int columnIndex)
+    {
+        player.Inventory = new int[Player.PlayerInventorySize];
+
+        if (reader.IsDBNull(columnIndex))
+        {
+            // No inventory in database, initialize empty
+            for (int i = 0; i < Player.PlayerInventorySize; i++)
+            {
+                player.Inventory[i] = -1;
+            }
+        }
+        else
+        {
+            try
+            {
+                // Read as JSON string from JSONB column
+                var inventoryJson = reader.GetString(columnIndex);
+
+                // Deserialize JSON array directly to int array
+                // Format: [1, 2, null, 3, null, ...] where null = empty slot (-1)
+                var items = JsonSerializer.Deserialize<int?[]>(inventoryJson);
+
+                if (items != null)
+                {
+                    for (int i = 0; i < Player.PlayerInventorySize; i++)
+                    {
+                        if (i < items.Length && items[i].HasValue)
+                        {
+                            player.Inventory[i] = items[i]!.Value;
+                        }
+                        else
+                        {
+                            player.Inventory[i] = -1;
+                        }
+                    }
+                }
+                else
+                {
+                    // Fallback to empty inventory
+                    for (int i = 0; i < Player.PlayerInventorySize; i++)
+                    {
+                        player.Inventory[i] = -1;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading inventory: {ex.Message}. Initializing empty inventory.");
+                for (int i = 0; i < Player.PlayerInventorySize; i++)
+                {
+                    player.Inventory[i] = -1;
+                }
+            }
+        }
+
+        Console.WriteLine($"Loaded inventory with {player.Inventory.Count(i => i != -1)} items");
+    }
+
+
+    /// <summary>
+    /// Converts C# inventory array to JSON string for database storage
+    /// </summary>
+    private string BuildInventoryJson(int[] inventory)
+    {
+        // Convert to nullable int array for JSON serialization
+        // -1 becomes null, everything else stays as is
+        var items = new int?[Player.PlayerInventorySize];
+
+        for (int i = 0; i < inventory.Length && i < Player.PlayerInventorySize; i++)
+        {
+            if (inventory[i] != -1)
+            {
+                items[i] = inventory[i];
+            }
+            else
+            {
+                items[i] = null;
+            }
+        }
+
+        // Fill remaining slots with null if inventory is smaller than expected
+        for (int i = inventory.Length; i < Player.PlayerInventorySize; i++)
+        {
+            items[i] = null;
+        }
+
+        return JsonSerializer.Serialize(items);
+    }
+
     public async Task<bool> CreateSessionAsync(int userId)
     {
         try
@@ -387,13 +486,17 @@ public class DatabaseService
 
             // For health: if player is awaiting respawn, save base health not current (which might be 0)
             var healthCurLevel = player.IsAwaitingRespawn && healthSkill != null ? healthSkill.BaseLevel : (healthSkill?.CurrentValue ?? 10);
-            
+
+            // Build inventory JSON for PostgreSQL JSONB column
+            var inventoryJson = BuildInventoryJson(player.Inventory);
+
             using var cmd = new NpgsqlCommand(
                 "UPDATE players SET " +
                 "x = @x, y = @y, facing = @facing, " +
                 "skill_health_cur_level = @healthCurLevel, skill_health_xp = @healthXP, " +
                 "skill_attack_cur_level = @attackCurLevel, skill_attack_xp = @attackXP, " +
-                "skill_defence_cur_level = @defenceCurLevel, skill_defence_xp = @defenceXP " +
+                "skill_defence_cur_level = @defenceCurLevel, skill_defence_xp = @defenceXP, " +
+                "inventory = @inventory::jsonb " +
                 "WHERE user_id = @userId", conn);
                 
             cmd.Parameters.AddWithValue("userId", player.UserId);
@@ -413,8 +516,11 @@ public class DatabaseService
             cmd.Parameters.AddWithValue("defenceCurLevel", (short)(defenceSkill?.CurrentValue ?? 1));
             cmd.Parameters.AddWithValue("defenceXP", defenceSkill?.CurrentXP ?? 0);
 
+            // Inventory (as JSON string)
+            cmd.Parameters.AddWithValue("inventory", inventoryJson);
+
             await cmd.ExecuteNonQueryAsync();
-            Console.WriteLine($"Saved complete player {player.UserId} state - Pos: ({player.X}, {player.Y}), Health: {healthCurLevel} ({healthSkill?.CurrentXP} XP)");
+            Console.WriteLine($"Saved complete player {player.UserId} state - Pos: ({player.X}, {player.Y}), Health: {healthCurLevel} ({healthSkill?.CurrentXP} XP), Inventory: {player.Inventory.Count(i => i != -1)} items");
         }
         catch (Exception ex)
         {

@@ -63,13 +63,12 @@ public class Player : Character
         IsDirty = false;
         DoNetworkHeartbeat = false;
 
-        Random rand = new Random();
-
         // Initialize empty inventory (-1 = empty slot)
+        // This will be overridden when loading from database
         Inventory = new int[PlayerInventorySize];
         for (int i = 0; i < PlayerInventorySize; i++)
         {
-            Inventory[i] = rand.Next(-1, 2);
+            Inventory[i] = -1;
         }
     }
 
