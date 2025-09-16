@@ -26,6 +26,7 @@ builder.Services.AddSingleton<CombatService>();
 builder.Services.AddSingleton<NPCService>();
 builder.Services.AddSingleton<PlayerService>();
 builder.Services.AddSingleton<InventoryService>();
+builder.Services.AddSingleton<ItemEffectProcessor>();
 
 // Register message processing services
 builder.Services.AddSingleton<MessageRouter>();

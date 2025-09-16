@@ -12,7 +12,7 @@
         "effects": [
           {
             "type": "Heal",
-            "amount": 3,
+            "amount": 10,
             "overTime": false,
             "duration": 0
           },

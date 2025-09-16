@@ -264,7 +264,7 @@ public class GameDataLoaderService
         return RollDropTableEntries(dropTable.Entries, depth);
     }
     
-    public List<(int itemId, int quantity)> RollNPCDrops(int npcUid)
+    public List<(int itemId, int quantity)> RollNPCDrops(int npcUid, int depth = 0)
     {
         var npc = GetNPC(npcUid);
 
