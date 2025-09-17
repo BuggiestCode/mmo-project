@@ -153,7 +153,8 @@ public class GameLoopService : BackgroundService
         
         // Update ground item timers and clean up expired items
         // Items expire after the set ticks ticks
-        _terrainService.UpdateGroundItemTimers();
+        // Also get items that just became public (reservation expired)
+        var newlyPublicItems = _terrainService.UpdateGroundItemTimers();
 
         // === POST-COMBAT CLEANUP ===
 
@@ -221,9 +222,21 @@ public class GameLoopService : BackgroundService
                 .Select(kvp => kvp.Value)
                 .ToList();
 
-            // Get visible ground items for this player
-            var visibleGroundItems = _terrainService.GetVisibleGroundItems(client.Player.VisibilityChunks) ?? new HashSet<ServerGroundItem>();
+            // Get visible ground items for this player (filtered by reservation)
+            var visibleGroundItems = _terrainService.GetVisibleGroundItems(client.Player.VisibilityChunks, client.Player.UserId) ?? new HashSet<ServerGroundItem>();
             var previousVisibleGroundItems = client.Player.VisibleGroundItems ?? new HashSet<ServerGroundItem>();
+
+            // Add newly public items that are in visible chunks for this player
+            // These items weren't visible before due to reservation, but now should appear
+            foreach (var publicItem in newlyPublicItems)
+            {
+                var chunkKey = $"{publicItem.ChunkX},{publicItem.ChunkY}";
+                if (client.Player.VisibilityChunks.Contains(chunkKey))
+                {
+                    visibleGroundItems.Add(publicItem);
+                }
+            }
+
             var newlyVisibleGroundItems = visibleGroundItems.Except(previousVisibleGroundItems).ToHashSet();
             var noLongerVisibleGroundItems = previousVisibleGroundItems.Except(visibleGroundItems).ToHashSet();
 

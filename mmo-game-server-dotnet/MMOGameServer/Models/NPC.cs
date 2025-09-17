@@ -88,6 +88,35 @@ public class NPC : Character
         return base.TakeDamage(amount, attacker);
     }
 
+    /// <summary>
+    /// Gets the player ID who should receive kill credit (for item drops)
+    /// Returns null if no player dealt damage or if only NPCs dealt damage
+    /// </summary>
+    public int? GetKillCreditPlayerId()
+    {
+        if (!DamageSources.Any())
+            return null;
+
+        // Find the highest damage value
+        int maxDamage = DamageSources.Max(kvp => kvp.Value);
+
+        // Get all attackers who dealt the max damage (handles ties)
+        var topDamageSources = DamageSources.Where(kvp => kvp.Value == maxDamage).ToList();
+
+        // Filter to only player sources
+        var topPlayerSources = topDamageSources.Where(kvp => kvp.Key.StartsWith("Player_")).ToList();
+
+        if (!topPlayerSources.Any())
+            return null; // No players in the top damage dealers
+
+        // Randomly select from tied player attackers
+        var random = new Random();
+        var selectedSource = topPlayerSources[random.Next(topPlayerSources.Count)];
+
+        string[] parts = selectedSource.Key.Split('_');
+        return int.Parse(parts[1]);
+    }
+
     // Override OnDeath to handle kill attribution
     public override void OnDeath()
     {

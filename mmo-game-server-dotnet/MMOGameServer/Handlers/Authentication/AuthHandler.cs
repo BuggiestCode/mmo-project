@@ -273,8 +273,8 @@ public class AuthHandler : IMessageHandler<AuthMessage>
         var visibleNpcIds = _npcService?.GetVisibleNPCs(client.Player) ?? new HashSet<int>();
         var visiblePlayerIDs = _terrain?.GetVisiblePlayers(client.Player) ?? new HashSet<int>();
         
-        // Get visible ground items (flattened)
-        var visibleGroundItems = _terrain?.GetVisibleGroundItems(client.Player.VisibilityChunks) ?? new HashSet<ServerGroundItem>();
+        // Get visible ground items (flattened, filtered by reservation)
+        var visibleGroundItems = _terrain?.GetVisibleGroundItems(client.Player.VisibilityChunks, client.Player.UserId) ?? new HashSet<ServerGroundItem>();
 
         // Send state update with visible players, NPCs, and ground items
         if (visiblePlayerIDs.Any() || visibleNpcIds.Any() || visibleGroundItems.Any())

@@ -517,7 +517,7 @@ public class TerrainService
     /// <summary>
     /// Adds an item to the ground at a specific world position
     /// </summary>
-    public bool AddGroundItem(int worldX, int worldY, int itemId)
+    public bool AddGroundItem(int worldX, int worldY, int itemId, int? reservedForPlayerId = null)
     {
         var (chunkX, chunkY, localX, localY) = WorldPositionToTileCoord(worldX, worldY);
         var chunkKey = $"{chunkX},{chunkY}";
@@ -527,26 +527,33 @@ public class TerrainService
                 _logger.LogWarning($"Cannot drop item on unloaded chunk {chunkKey}");
                 return false;
             }
-        
+
         // Check if tile is walkable (items can only be dropped on walkable tiles)
         if (!ValidateMovement(worldX, worldY))
         {
             _logger.LogWarning($"Cannot drop item on non-walkable tile at ({worldX}, {worldY})");
             return false;
         }
-        
+
         var tileKey = (localX, localY);
-        
+
         // Add to existing list or create new one
         if (!chunk.GroundItems.ContainsKey(tileKey))
         {
             chunk.GroundItems[tileKey] = new HashSet<ServerGroundItem>();
         }
-        
-        var groundItem = new ServerGroundItem(itemId, chunk.ChunkX, chunk.ChunkY, localX, localY);
+
+        var groundItem = new ServerGroundItem(itemId, chunk.ChunkX, chunk.ChunkY, localX, localY, reservedForPlayerId);
         chunk.GroundItems[tileKey].Add(groundItem);
-        
-        _logger.LogInformation($"Added item Type: {itemId}({groundItem.InstanceID}) to ground at world ({worldX}, {worldY}), chunk {chunkKey}, local ({localX}, {localY})");
+
+        if (reservedForPlayerId.HasValue)
+        {
+            _logger.LogInformation($"Added item Type: {itemId}({groundItem.InstanceID}) to ground at world ({worldX}, {worldY}), chunk {chunkKey}, local ({localX}, {localY}) - Reserved for Player {reservedForPlayerId}");
+        }
+        else
+        {
+            _logger.LogInformation($"Added item Type: {itemId}({groundItem.InstanceID}) to ground at world ({worldX}, {worldY}), chunk {chunkKey}, local ({localX}, {localY})");
+        }
         return true;
     }
 
@@ -663,71 +670,96 @@ public class TerrainService
     /// <summary>
     /// Gets all ground items for chunks visible to a player
     /// </summary>
-    public HashSet<ServerGroundItem> GetVisibleGroundItems(HashSet<string> visibleChunks)
+    public HashSet<ServerGroundItem> GetVisibleGroundItems(HashSet<string> visibleChunks, int playerId)
     {
         var result = new HashSet<ServerGroundItem>();
-        
+
         foreach (var chunkKey in visibleChunks)
         {
             if (!_chunks.TryGetValue(chunkKey, out var chunk))
                 continue;
-                
+
             if (chunk.GroundItems.Count == 0)
                 continue;
-            
+
             var parts = chunkKey.Split(',');
             if (parts.Length != 2 || !int.TryParse(parts[0], out var chunkX) || !int.TryParse(parts[1], out var chunkY))
                 continue;
-            
+
             foreach (var (tilePos, items) in chunk.GroundItems)
             {
                 if (items.Count > 0)
                 {
-                    result.UnionWith(items);
+                    // Filter items based on reservation status
+                    var visibleItems = items.Where(item =>
+                        !item.ReservedForPlayerId.HasValue || // Public item
+                        item.ReservedForPlayerId == playerId   // Reserved for this player
+                    );
+                    result.UnionWith(visibleItems);
                 }
             }
         }
-        
+
         return result;
     }
     
     /// <summary>
     /// Increments timers for all ground items and removes expired ones
     /// Called by GameLoopService each tick
+    /// Returns a set of items that just became public (reservation expired)
     /// </summary>
-    public void UpdateGroundItemTimers()
+    public HashSet<ServerGroundItem> UpdateGroundItemTimers()
     {
+        var newlyPublicItems = new HashSet<ServerGroundItem>();
+
         foreach (var chunk in _chunks.Values)
         {
             var tilesToClean = new List<(int x, int y)>();
-            
+
             foreach (var (tilePos, items) in chunk.GroundItems)
             {
-                // Increment timers and remove expired items
-                items.RemoveWhere(item =>
+                // Process each item
+                foreach (var item in items.ToList()) // ToList to avoid modification during iteration
                 {
+                    // Increment despawn timer
                     item.OnGroundTimer++;
+
+                    // Handle reservation countdown
+                    if (item.ReservedForPlayerId.HasValue && item.ReservationTicksRemaining > 0)
+                    {
+                        item.ReservationTicksRemaining--;
+                        if (item.ReservationTicksRemaining <= 0)
+                        {
+                            // Reservation expired - item becomes public
+                            _logger.LogInformation($"Item {item.ItemId}({item.InstanceID}) reservation expired, now public at chunk ({chunk.ChunkX},{chunk.ChunkY})");
+                            item.ReservedForPlayerId = null;
+                            newlyPublicItems.Add(item);
+                        }
+                    }
+
+                    // Check for despawn
                     if (item.OnGroundTimer >= ServerGroundItem.GROUND_ITEM_DESPAWN_TICKS)
                     {
                         _logger.LogDebug($"Removing expired item {item.ItemId} from chunk {chunk.ChunkX},{chunk.ChunkY} tile ({tilePos.x}, {tilePos.y})");
-                        return true;
+                        items.Remove(item);
                     }
-                    return false;
-                });
-                
+                }
+
                 // Mark empty tiles for cleanup
                 if (items.Count == 0)
                 {
                     tilesToClean.Add(tilePos);
                 }
             }
-            
+
             // Clean up empty tiles
             foreach (var tile in tilesToClean)
             {
                 chunk.GroundItems.Remove(tile);
             }
         }
+
+        return newlyPublicItems;
     }
 
     /// <summary>

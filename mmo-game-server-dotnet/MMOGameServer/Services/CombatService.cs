@@ -193,13 +193,16 @@ public class CombatService
         // Is still alive post take damage?
         if (!target.TakeDamage(damage, attacker))
         {
-            if (target is NPC)
+            if (target is NPC npcTarget)
             {
+                // Get the player who should receive reserved drops
+                int? reservedForPlayerId = npcTarget.GetKillCreditPlayerId();
+
                 // IGNORE ITEM COUNTS FOR NOW (ToDo)
-                List<(int, int)> drops = _gameData.RollNPCDrops(((NPC)target).TypeID);
+                List<(int, int)> drops = _gameData.RollNPCDrops(npcTarget.TypeID);
                 foreach ((int, int) drop in drops)
                 {
-                    _terrainService.AddGroundItem(target.X, target.Y, drop.Item1);
+                    _terrainService.AddGroundItem(target.X, target.Y, drop.Item1, reservedForPlayerId);
                 }
             }
         }

@@ -40,7 +40,20 @@ public class ServerGroundItem : IEquatable<ServerGroundItem>
     // 180 * 0.5s = 90s despawn time
     public const int GROUND_ITEM_DESPAWN_TICKS = 180;
 
-    public ServerGroundItem(int itemId, int chunkX, int chunkY, int tileX, int tileY)
+    // 20 * 0.5s = 10s reservation time for exclusive visibility
+    public const int GROUND_ITEM_RESERVATION_TICKS = 20;
+
+    /// <summary>
+    /// Player ID who has exclusive visibility (null means public)
+    /// </summary>
+    public int? ReservedForPlayerId { get; set; }
+
+    /// <summary>
+    /// Remaining ticks of reservation time
+    /// </summary>
+    public int ReservationTicksRemaining { get; set; }
+
+    public ServerGroundItem(int itemId, int chunkX, int chunkY, int tileX, int tileY, int? reservedForPlayerId = null)
     {
         InstanceID = GenerateUID();
         ItemId = itemId;
@@ -52,6 +65,9 @@ public class ServerGroundItem : IEquatable<ServerGroundItem>
 
         OnGroundTimer = 0;
         Count = 1;
+
+        ReservedForPlayerId = reservedForPlayerId;
+        ReservationTicksRemaining = reservedForPlayerId.HasValue ? GROUND_ITEM_RESERVATION_TICKS : 0;
     }
 
     private static int GenerateUID()
