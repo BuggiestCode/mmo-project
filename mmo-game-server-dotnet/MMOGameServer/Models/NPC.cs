@@ -1,5 +1,6 @@
 using MMOGameServer.Models.GameData;
 using MMOGameServer.Models.Snapshots;
+using System.Linq;
 
 namespace MMOGameServer.Models;
 
@@ -85,6 +86,54 @@ public class NPC : Character
 
         // Call base implementation to apply damage
         return base.TakeDamage(amount, attacker);
+    }
+
+    // Override OnDeath to handle kill attribution
+    public override void OnDeath()
+    {
+        // Determine who gets kill credit
+        if (DamageSources.Any())
+        {
+            // Find the highest damage value
+            int maxDamage = DamageSources.Max(kvp => kvp.Value);
+
+            // Get all attackers who dealt the max damage (handles ties)
+            var topDamageSources = DamageSources.Where(kvp => kvp.Value == maxDamage).ToList();
+
+            // Randomly select from tied attackers
+            var random = new Random();
+            var selectedSource = topDamageSources[random.Next(topDamageSources.Count)];
+
+            string[] parts = selectedSource.Key.Split('_');
+            string attackerType = parts[0];
+            int attackerId = int.Parse(parts[1]);
+            int totalDamageByKiller = selectedSource.Value;
+
+            // Calculate total damage dealt by all sources
+            int totalDamage = DamageSources.Sum(kvp => kvp.Value);
+
+            if (topDamageSources.Count > 1)
+            {
+                Console.WriteLine($"[KILL ATTRIBUTION] NPC {Id} (Type: {TypeID}) killed by {attackerType} {attackerId} - Dealt {totalDamageByKiller}/{totalDamage} damage ({(totalDamageByKiller * 100.0 / totalDamage):F1}%) - TIED with {topDamageSources.Count - 1} other(s), randomly selected");
+            }
+            else
+            {
+                Console.WriteLine($"[KILL ATTRIBUTION] NPC {Id} (Type: {TypeID}) killed by {attackerType} {attackerId} - Dealt {totalDamageByKiller}/{totalDamage} damage ({(totalDamageByKiller * 100.0 / totalDamage):F1}%)");
+            }
+
+            // Log all damage contributors
+            foreach (var source in DamageSources.OrderByDescending(kvp => kvp.Value))
+            {
+                Console.WriteLine($"  - {source.Key}: {source.Value} damage ({(source.Value * 100.0 / totalDamage):F1}%)");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"[KILL ATTRIBUTION] NPC {Id} (Type: {TypeID}) died with no recorded damage sources");
+        }
+
+        // Call base implementation to handle target cleanup
+        base.OnDeath();
     }
 
     public NPCSnapshot GetSnapshot()

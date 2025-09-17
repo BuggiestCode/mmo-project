@@ -64,10 +64,27 @@ public abstract class Character : ITargetable
     public List<int> DamageTakenThisTick { get; private set; } = new();
     public List<int> DamageTakenLastTick { get; private set; } = new();
 
+    // Damage source tracking for kill attribution (key format: "Player_ID" or "NPC_ID" -> total damage dealt)
+    public Dictionary<string, int> DamageSources { get; private set; } = new();
+
     public virtual bool TakeDamage(int amount, Character? attacker = null)
     {
         DamageTakenThisTick.Add(amount);
         IsDirty = true;
+
+        // Track damage source for kill attribution
+        if (attacker != null && amount > 0)
+        {
+            string attackerKey = $"{attacker.SelfTargetType}_{attacker.Id}";
+            if (DamageSources.ContainsKey(attackerKey))
+            {
+                DamageSources[attackerKey] += amount;
+            }
+            else
+            {
+                DamageSources[attackerKey] = amount;
+            }
+        }
 
         // Apply damage to health skill (regen counter is reset in Skill.Modify)
         if (HealthSkill != null)
@@ -383,19 +400,19 @@ public abstract class Character : ITargetable
     {
         // Only process if alive
         if (!IsAlive) return;
-        
+
         // Process regeneration for all skills
         foreach (var skill in Skills.Values)
         {
             // Increment the skill's regen counter
             skill.RegenCounter++;
-            
+
             // Check if it's time to regenerate this skill
             if (skill.RegenCounter >= SkillRegenTicks)
             {
                 // Reset counter
                 skill.RegenCounter = 0;
-                
+
                 // Handle regeneration toward base level
                 if (skill.CurrentValue < skill.BaseLevel)
                 {
@@ -408,6 +425,12 @@ public abstract class Character : ITargetable
                     skill.Modify(-1);
                 }
             }
+        }
+
+        // Clear damage sources when health is full (for NPCs and other characters)
+        if (CurrentHealth == MaxHealth && DamageSources.Any())
+        {
+            DamageSources.Clear();
         }
     }
 }
