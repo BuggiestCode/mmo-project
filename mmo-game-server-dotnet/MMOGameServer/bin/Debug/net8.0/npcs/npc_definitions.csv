@@ -1,3 +1,3 @@
 Name,HealthLevel,AttackLevel,DefenceLevel,AttackSpeedTicks,IsAggressive,Drops,TertiaryDrops
-Goblin,8,1,1,4,True,"",""
+Goblin,8,1,1,4,True,"Table:2:1:1:100",""
 Seagull,2,1,0,2,False,"Table:2:1:1:100",""

@@ -290,9 +290,10 @@ public class AuthHandler : IMessageHandler<AuthMessage>
             {
                 ClientsToLoad = visiblePlayersData?.Any() == true ? visiblePlayersData.Cast<object>().ToList() : null,
                 NpcsToLoad = visibleNPCsData?.Any() == true ? visibleNPCsData : null,
-                GroundItemsToLoad = visibleGroundItems?.Any() == true 
-                    ? TerrainService.ReconstructGroundItemsSnapshot(visibleGroundItems).Cast<object>().ToList() 
+                GroundItemsToLoad = visibleGroundItems?.Any() == true
+                    ? TerrainService.ReconstructGroundItemsSnapshot(visibleGroundItems).Cast<object>().ToList()
                     : null,
+                TimeOfDay = _gameWorld.GetTimeOfDay()
             };
 
             await client.SendMessageAsync(stateMessage);

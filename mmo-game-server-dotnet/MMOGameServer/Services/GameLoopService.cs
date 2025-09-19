@@ -87,6 +87,9 @@ public class GameLoopService : BackgroundService
         var clients = _gameWorld.GetAuthenticatedClients().ToList();
         if (!clients.Any() && _npcService == null) return;
 
+        // === TIME OF DAY PHASE ===
+        _gameWorld.AdvanceTime();
+
         // === MOVEMENT PHASE ===
         
         // Phase 1: Calculate and apply all npc movements
@@ -282,6 +285,7 @@ public class GameLoopService : BackgroundService
                     GroundItemsToUnLoad = noLongerVisibleGroundItems?.Any() == true
                         ? TerrainService.ReconstructGroundItemsSnapshot(noLongerVisibleGroundItems).Cast<object>().ToArray()
                         : null,
+                    TimeOfDay = _gameWorld.GetTimeOfDay()
                 };
 
                 updateTasks.Add(client.SendMessageAsync(personalizedUpdate));

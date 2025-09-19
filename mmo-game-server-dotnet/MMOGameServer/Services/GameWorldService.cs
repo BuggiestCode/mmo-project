@@ -9,7 +9,13 @@ public class GameWorldService
 {
     private readonly ConcurrentDictionary<string, ConnectedClient> _clients = new();
     private readonly DatabaseService _databaseService;
-    
+
+    // Time of Day tracking
+    private int _currentTimeOfDayTick = 6000; // Start at 6am (quarter through the day)
+    private readonly object _timeLock = new object();
+    public const int TicksPerDay = 24000; // Matching your front-end scale
+    public const int TicksPerGameLoopTick = 1; // Advance 20 time ticks per game loop tick (500ms)
+
     public GameWorldService(DatabaseService databaseService)
     {
         _databaseService = databaseService;
@@ -145,5 +151,30 @@ public class GameWorldService
         return _clients.Values
             .Where(c => c.IsAuthenticated && c.Player != null && userIds.Contains(c.Player.UserId))
             .ToList();
+    }
+
+    // Time of Day methods
+    public int GetTimeOfDay()
+    {
+        lock (_timeLock)
+        {
+            return _currentTimeOfDayTick;
+        }
+    }
+
+    public void AdvanceTime()
+    {
+        lock (_timeLock)
+        {
+            _currentTimeOfDayTick = (_currentTimeOfDayTick + TicksPerGameLoopTick) % TicksPerDay;
+        }
+    }
+
+    public float GetTimeOfDayNormalized()
+    {
+        lock (_timeLock)
+        {
+            return (float)_currentTimeOfDayTick / TicksPerDay;
+        }
     }
 }
