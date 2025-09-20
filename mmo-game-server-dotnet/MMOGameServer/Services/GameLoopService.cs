@@ -90,6 +90,12 @@ public class GameLoopService : BackgroundService
         // === TIME OF DAY PHASE ===
         _gameWorld.AdvanceTime();
 
+        // Send tick message to all authenticated clients
+        var currentTimeOfDay = _gameWorld.GetTimeOfDay();
+        var tickMessage = new TickMessage { TimeOfDay = currentTimeOfDay };
+        var tickTasks = clients.Select(client => client.SendMessageAsync(tickMessage));
+        await Task.WhenAll(tickTasks);
+
         // === MOVEMENT PHASE ===
         
         // Phase 1: Calculate and apply all npc movements
@@ -284,8 +290,7 @@ public class GameLoopService : BackgroundService
                         : null,
                     GroundItemsToUnLoad = noLongerVisibleGroundItems?.Any() == true
                         ? TerrainService.ReconstructGroundItemsSnapshot(noLongerVisibleGroundItems).Cast<object>().ToArray()
-                        : null,
-                    TimeOfDay = _gameWorld.GetTimeOfDay()
+                        : null
                 };
 
                 updateTasks.Add(client.SendMessageAsync(personalizedUpdate));

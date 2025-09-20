@@ -47,8 +47,4 @@ public class StateMessage
     [JsonPropertyName("groundItemsToUnLoad")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IList<object>? GroundItemsToUnLoad { get; set; }
-
-    [JsonPropertyName("timeOfDay")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public int? TimeOfDay { get; set; }
 }

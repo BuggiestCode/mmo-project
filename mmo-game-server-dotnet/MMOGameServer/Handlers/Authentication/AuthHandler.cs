@@ -292,11 +292,14 @@ public class AuthHandler : IMessageHandler<AuthMessage>
                 NpcsToLoad = visibleNPCsData?.Any() == true ? visibleNPCsData : null,
                 GroundItemsToLoad = visibleGroundItems?.Any() == true
                     ? TerrainService.ReconstructGroundItemsSnapshot(visibleGroundItems).Cast<object>().ToList()
-                    : null,
-                TimeOfDay = _gameWorld.GetTimeOfDay()
+                    : null
             };
 
             await client.SendMessageAsync(stateMessage);
+
+            // Send initial tick message with current time of day
+            var tickMessage = new TickMessage { TimeOfDay = _gameWorld.GetTimeOfDay() };
+            await client.SendMessageAsync(tickMessage);
         }
     }
     
