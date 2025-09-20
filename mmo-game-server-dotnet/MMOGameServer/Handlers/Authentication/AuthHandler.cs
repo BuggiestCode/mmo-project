@@ -146,6 +146,30 @@ public class AuthHandler : IMessageHandler<AuthMessage>
                 return;
             }
             
+            // Check if player is banned
+            var (isBanned, banUntil, banReason) = await _database.GetPlayerBanStatusAsync(userId);
+            if (isBanned)
+            {
+                var banMessage = banUntil?.Year == 9999
+                    ? $"You are permanently banned. Reason: {banReason ?? "No reason provided"}"
+                    : $"You are banned until {banUntil:yyyy-MM-dd HH:mm} UTC. Reason: {banReason ?? "No reason provided"}";
+
+                await client.SendMessageAsync(new ErrorResponse
+                {
+                    Code = "BANNED",
+                    Message = banMessage
+                });
+
+                if (client.WebSocket?.State == System.Net.WebSockets.WebSocketState.Open)
+                {
+                    await client.WebSocket.CloseAsync(
+                        System.Net.WebSockets.WebSocketCloseStatus.PolicyViolation,
+                        "Banned",
+                        CancellationToken.None);
+                }
+                return;
+            }
+
             // Set up client
             client.Player = player;
             client.Username = username;

@@ -10,22 +10,25 @@ public class DatabaseService
     private readonly string _authConnectionString;
     private readonly string _gameConnectionString;
     private readonly string _worldName;
-    
+
     public DatabaseService()
     {
-        var authUrl = Environment.GetEnvironmentVariable("AUTH_DATABASE_URL") 
+        var authUrl = Environment.GetEnvironmentVariable("AUTH_DATABASE_URL")
             ?? throw new InvalidOperationException("AUTH_DATABASE_URL is not defined");
-        
-        var gameUrl = Environment.GetEnvironmentVariable("GAME_DATABASE_URL") 
+
+        var gameUrl = Environment.GetEnvironmentVariable("GAME_DATABASE_URL")
             ?? throw new InvalidOperationException("GAME_DATABASE_URL is not defined");
-            
+
         // Convert PostgreSQL URL format to Npgsql connection string format
         _authConnectionString = ConvertUrlToConnectionString(authUrl);
         _gameConnectionString = ConvertUrlToConnectionString(gameUrl);
-            
+
         _worldName = Environment.GetEnvironmentVariable("WORLD_NAME") ?? "world1-dotnet";
+
+        // Bootstrap admin account on startup
+        Task.Run(async () => await EnsureBootstrapAdminAsync());
     }
-    
+
     private string ConvertUrlToConnectionString(string url)
     {
         // Parse database format (format set on env var)
@@ -36,20 +39,20 @@ public class DatabaseService
         var host = uri.Host;
         var port = uri.Port > 0 ? uri.Port : 5432;
         var database = uri.AbsolutePath.TrimStart('/');
-        
+
         // Disable SSL for internal Fly.io connections
         return $"Host={host};Port={port};Database={database};Username={username};Password={password};SSL Mode=Disable";
     }
-    
+
     public async Task CleanupStaleSessionsAsync()
     {
         using var conn = new NpgsqlConnection(_authConnectionString);
         await conn.OpenAsync();
-        
+
         using var cmd = new NpgsqlCommand(
             "DELETE FROM active_sessions WHERE world = @world", conn);
         cmd.Parameters.AddWithValue("world", _worldName);
-        
+
         var deleted = await cmd.ExecuteNonQueryAsync();
         Console.WriteLine($"Cleaned up {deleted} stale sessions for {_worldName}");
     }
@@ -89,7 +92,7 @@ public class DatabaseService
             player.HairStyleIndex = reader.IsDBNull(9) ? 0 : reader.GetInt32(9);
             player.FacialHairStyleIndex = reader.IsDBNull(10) ? 0 : reader.GetInt32(10);
             player.IsMale = reader.IsDBNull(11) ? true : reader.GetBoolean(11);
-            
+
             // Load skill data from database
             LoadPlayerSkillsFromReader(player, reader);
 
@@ -122,7 +125,7 @@ public class DatabaseService
         insertCmd.Parameters.AddWithValue("hairStyle", 0);
         insertCmd.Parameters.AddWithValue("facialHairStyle", 0);
         insertCmd.Parameters.AddWithValue("isMale", true);
-        
+
         await insertCmd.ExecuteNonQueryAsync();
         Console.WriteLine($"Created new player {userId} at spawn");
 
@@ -136,7 +139,7 @@ public class DatabaseService
 
         return newPlayer;
     }
-    
+
     /// <summary>
     /// Loads player skills from database reader (assumes reader is at the correct row)
     /// Reader columns must be in order: ..., skill_health_cur_level, skill_health_xp, skill_attack_cur_level, skill_attack_xp, skill_defence_cur_level, skill_defence_xp
@@ -261,10 +264,10 @@ public class DatabaseService
         {
             using var conn = new NpgsqlConnection(_authConnectionString);
             await conn.OpenAsync();
-            
+
             // Use a transaction for atomic session creation with proper conflict detection
             using var transaction = await conn.BeginTransactionAsync();
-            
+
             try
             {
                 // First, check if there's already an active session for this user
@@ -274,7 +277,7 @@ public class DatabaseService
                     WHERE user_id = @userId 
                     FOR UPDATE", conn, transaction);
                 checkCmd.Parameters.AddWithValue("userId", userId);
-                
+
                 using var reader = await checkCmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
@@ -282,9 +285,9 @@ public class DatabaseService
                     var existingWorld = reader.GetString(1);  // world
                     var connectionState = reader.GetInt32(2); // connection_state
                     var lastHeartbeat = reader.GetDateTime(3); // last_heartbeat
-                    
+
                     await reader.CloseAsync();
-                    
+
                     // Check if session is recent and active (within last 30 seconds for soft disconnect window)
                     var timeSinceHeartbeat = DateTime.UtcNow - lastHeartbeat;
                     if (connectionState == 0 || timeSinceHeartbeat.TotalSeconds < 30)
@@ -293,7 +296,7 @@ public class DatabaseService
                         await transaction.RollbackAsync();
                         return false; // Session creation denied - user already logged in
                     }
-                    
+
                     // Old session exists but is stale, update it
                     using var updateCmd = new NpgsqlCommand(@"
                         UPDATE active_sessions 
@@ -306,7 +309,7 @@ public class DatabaseService
                 else
                 {
                     await reader.CloseAsync();
-                    
+
                     // No existing session, create new one
                     using var insertCmd = new NpgsqlCommand(@"
                         INSERT INTO active_sessions (user_id, world, connection_state, last_heartbeat) 
@@ -315,7 +318,7 @@ public class DatabaseService
                     insertCmd.Parameters.AddWithValue("world", _worldName);
                     await insertCmd.ExecuteNonQueryAsync();
                 }
-                
+
                 await transaction.CommitAsync();
                 Console.WriteLine($"Session created/updated for user {userId} on {_worldName}");
                 return true;
@@ -332,34 +335,34 @@ public class DatabaseService
             return false;
         }
     }
-    
+
     public async Task<(bool exists, bool isActive, string? world)> CheckExistingSessionAsync(int userId)
     {
         try
         {
             using var conn = new NpgsqlConnection(_authConnectionString);
             await conn.OpenAsync();
-            
+
             using var cmd = new NpgsqlCommand(@"
                 SELECT world, connection_state, last_heartbeat 
                 FROM active_sessions 
                 WHERE user_id = @userId", conn);
             cmd.Parameters.AddWithValue("userId", userId);
-            
+
             using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
                 var world = reader.GetString(0);      // world
                 var connectionState = reader.GetInt32(1); // connection_state
                 var lastHeartbeat = reader.GetDateTime(2); // last_heartbeat
-                
+
                 // Session is active only if connection_state is 0 (connected)
                 // Disconnected sessions (state 1) are eligible for soft reconnect
                 var isActive = connectionState == 0;
-                
+
                 return (true, isActive, world);
             }
-            
+
             return (false, false, null);
         }
         catch (Exception ex)
@@ -368,18 +371,18 @@ public class DatabaseService
             return (false, false, null);
         }
     }
-    
+
     public async Task RemoveSessionAsync(int userId)
     {
         try
         {
             using var conn = new NpgsqlConnection(_authConnectionString);
             await conn.OpenAsync();
-            
+
             using var cmd = new NpgsqlCommand(
                 "DELETE FROM active_sessions WHERE user_id = @userId", conn);
             cmd.Parameters.AddWithValue("userId", userId);
-            
+
             await cmd.ExecuteNonQueryAsync();
             Console.WriteLine($"Session removed for user {userId}");
         }
@@ -468,7 +471,7 @@ public class DatabaseService
             Console.WriteLine($"Failed to save player {userId} look attributes: {ex.Message}");
         }
     }
-    
+
     /// <summary>
     /// Saves complete player state to database including position, facing, and skills
     /// </summary>
@@ -498,20 +501,20 @@ public class DatabaseService
                 "skill_defence_cur_level = @defenceCurLevel, skill_defence_xp = @defenceXP, " +
                 "inventory = @inventory::jsonb " +
                 "WHERE user_id = @userId", conn);
-                
+
             cmd.Parameters.AddWithValue("userId", player.UserId);
             cmd.Parameters.AddWithValue("x", player.X);
             cmd.Parameters.AddWithValue("y", player.Y);
             cmd.Parameters.AddWithValue("facing", player.Facing);
-            
+
             // Health skill
             cmd.Parameters.AddWithValue("healthCurLevel", (short)healthCurLevel);
             cmd.Parameters.AddWithValue("healthXP", healthSkill?.CurrentXP ?? Skill.GetXPForLevel(Player.StartHealthLevel));
-            
+
             // Attack skill
             cmd.Parameters.AddWithValue("attackCurLevel", (short)(attackSkill?.CurrentValue ?? 1));
             cmd.Parameters.AddWithValue("attackXP", attackSkill?.CurrentXP ?? 0);
-            
+
             // Defence skill
             cmd.Parameters.AddWithValue("defenceCurLevel", (short)(defenceSkill?.CurrentValue ?? 1));
             cmd.Parameters.AddWithValue("defenceXP", defenceSkill?.CurrentXP ?? 0);
@@ -527,7 +530,7 @@ public class DatabaseService
             Console.WriteLine($"Failed to save player {player.UserId} to database: {ex.Message}");
         }
     }
-    
+
     public async Task SavePlayerPositionAsync(int userId, int x, int y, int facing)
     {
         try
@@ -550,19 +553,19 @@ public class DatabaseService
             Console.WriteLine($"Failed to save player {userId} position: {ex.Message}");
         }
     }
-    
+
     public async Task UpdateSessionStateAsync(int userId, int state)
     {
         try
         {
             using var conn = new NpgsqlConnection(_authConnectionString);
             await conn.OpenAsync();
-            
+
             using var cmd = new NpgsqlCommand(
                 "UPDATE active_sessions SET connection_state = @state, last_heartbeat = NOW() WHERE user_id = @userId", conn);
             cmd.Parameters.AddWithValue("userId", userId);
             cmd.Parameters.AddWithValue("state", state);
-            
+
             await cmd.ExecuteNonQueryAsync();
             Console.WriteLine($"Session state updated for user {userId} to {state}");
         }
@@ -571,18 +574,18 @@ public class DatabaseService
             Console.WriteLine($"Failed to update session state for user {userId}: {ex.Message}");
         }
     }
-    
+
     public async Task CompleteCharacterCreationAsync(int userId)
     {
         try
         {
             using var conn = new NpgsqlConnection(_gameConnectionString);
             await conn.OpenAsync();
-            
+
             using var cmd = new NpgsqlCommand(
                 "UPDATE players SET character_creator_complete = TRUE WHERE user_id = @userId", conn);
             cmd.Parameters.AddWithValue("userId", userId);
-            
+
             await cmd.ExecuteNonQueryAsync();
             Console.WriteLine($"Character creation completed for user {userId}");
         }
@@ -591,20 +594,20 @@ public class DatabaseService
             Console.WriteLine($"Failed to complete character creation for user {userId}: {ex.Message}");
         }
     }
-    
+
     public async Task<List<int>> GetActiveSessionsForWorldAsync()
     {
         var activeSessions = new List<int>();
-        
+
         try
         {
             using var conn = new NpgsqlConnection(_authConnectionString);
             await conn.OpenAsync();
-            
+
             using var cmd = new NpgsqlCommand(
                 "SELECT user_id FROM active_sessions WHERE world = @world AND connection_state = 0", conn);
             cmd.Parameters.AddWithValue("world", _worldName);
-            
+
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
@@ -615,7 +618,210 @@ public class DatabaseService
         {
             Console.WriteLine($"Failed to get active sessions for world {_worldName}: {ex.Message}");
         }
-        
+
         return activeSessions;
+    }
+    
+    /*
+    // ToDo implement the below methods properly for auditing the auth players against their game database records (since cross-DB foreign keys aren't possible so we have no way to
+    // validate that the number of "auth" login players == gameDatabase.players, we might have orphaned players where the auth player was deleted (somehow by the admins))
+    public async Task<List<int>> FindOrphanedPlayersAsync()
+    {
+        // First, get all user_ids from game DB
+        await using var gameConn = new NpgsqlConnection(_gameConnectionString);
+        var gameUserIds = await gameConn.QueryAsync<int>(
+            "SELECT user_id FROM players");
+
+        // Then verify against auth DB
+        await using var authConn = new NpgsqlConnection(_authConnectionString);
+        var validUserIds = await authConn.QueryAsync<int>(
+            "SELECT id FROM users WHERE id = ANY(@ids)",
+            new { ids = gameUserIds.ToArray() });
+
+        // Return orphaned IDs for review
+        return gameUserIds.Except(validUserIds).ToList();
+    }
+
+    public async Task<bool> RemoveOrphanedPlayerAsync(int userId, bool dryRun = true)
+    {
+        if (dryRun)
+        {
+            // Just report what would be deleted
+            await using var conn = new NpgsqlConnection(_gameConnectionString);
+            var player = await conn.QuerySingleOrDefaultAsync(
+                "SELECT user_id, x, y FROM players WHERE user_id = @userId",
+                new { userId });
+
+            Console.WriteLine($"[DRY RUN] Would delete player: {player}");
+            return false;
+        }
+
+        // Actual deletion with transaction
+        await using var conn = new NpgsqlConnection(_gameConnectionString);
+        await using var transaction = await conn.BeginTransactionAsync();
+
+        try
+        {
+            // Delete from adminwhitelist first (if exists)
+            await conn.ExecuteAsync(
+                "DELETE FROM adminwhitelist WHERE user_id = @userId",
+                new { userId }, transaction);
+
+            // Then delete player
+            var deleted = await conn.ExecuteAsync(
+                "DELETE FROM players WHERE user_id = @userId",
+                new { userId }, transaction);
+
+            await transaction.CommitAsync();
+            return deleted > 0;
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }*/
+
+    private async Task EnsureBootstrapAdminAsync()
+    {
+        try
+        {
+            // Find the 'admin' user in auth database
+            using var authConn = new NpgsqlConnection(_authConnectionString);
+            await authConn.OpenAsync();
+
+            using var authCmd = new NpgsqlCommand(
+                "SELECT id FROM users WHERE username = 'admin'", authConn);
+
+            using var reader = await authCmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                var adminUserId = reader.GetInt32(0);
+                await reader.CloseAsync();
+
+                // Check if already in whitelist
+                using var gameConn = new NpgsqlConnection(_gameConnectionString);
+                await gameConn.OpenAsync();
+
+                using var checkCmd = new NpgsqlCommand(
+                    "SELECT EXISTS(SELECT 1 FROM adminwhitelist WHERE user_id = @userId)", gameConn);
+                checkCmd.Parameters.AddWithValue("userId", adminUserId);
+
+                var exists = (bool)(await checkCmd.ExecuteScalarAsync() ?? false);
+
+                if (!exists)
+                {
+                    // Add to whitelist
+                    using var insertCmd = new NpgsqlCommand(
+                        "INSERT INTO adminwhitelist (user_id) VALUES (@userId) ON CONFLICT (user_id) DO NOTHING", gameConn);
+                    insertCmd.Parameters.AddWithValue("userId", adminUserId);
+                    await insertCmd.ExecuteNonQueryAsync();
+
+                    Console.WriteLine($"[DatabaseService] Bootstrap admin account added to whitelist (user_id: {adminUserId})");
+                }
+                else
+                {
+                    Console.WriteLine("[DatabaseService] Bootstrap admin account already in whitelist");
+                }
+            }
+            else
+            {
+                Console.WriteLine("[DatabaseService] WARNING: 'admin' user not found in auth database");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DatabaseService] Error ensuring bootstrap admin: {ex.Message}");
+        }
+    }
+
+    public async Task<bool> IsAdminAsync(int userId)
+    {
+        using var conn = new NpgsqlConnection(_gameConnectionString);
+        await conn.OpenAsync();
+
+        using var cmd = new NpgsqlCommand(
+            "SELECT EXISTS(SELECT 1 FROM adminwhitelist WHERE user_id = @userId)", conn);
+        cmd.Parameters.AddWithValue("userId", userId);
+
+        return (bool)(await cmd.ExecuteScalarAsync() ?? false);
+    }
+
+    public async Task<bool> AddAdminAsync(int userId)
+    {
+        using var conn = new NpgsqlConnection(_gameConnectionString);
+        await conn.OpenAsync();
+
+        using var cmd = new NpgsqlCommand(
+            "INSERT INTO adminwhitelist (user_id) VALUES (@userId) ON CONFLICT (user_id) DO NOTHING", conn);
+        cmd.Parameters.AddWithValue("userId", userId);
+
+        var result = await cmd.ExecuteNonQueryAsync();
+        return result > 0;
+    }
+
+    public async Task<bool> RemoveAdminAsync(int userId)
+    {
+        using var conn = new NpgsqlConnection(_gameConnectionString);
+        await conn.OpenAsync();
+
+        using var cmd = new NpgsqlCommand(
+            "DELETE FROM adminwhitelist WHERE user_id = @userId", conn);
+        cmd.Parameters.AddWithValue("userId", userId);
+
+        var result = await cmd.ExecuteNonQueryAsync();
+        return result > 0;
+    }
+
+    public async Task<int?> GetUserIdByUsernameAsync(string username)
+    {
+        using var conn = new NpgsqlConnection(_authConnectionString);
+        await conn.OpenAsync();
+
+        using var cmd = new NpgsqlCommand(
+            "SELECT id FROM users WHERE username = @username", conn);
+        cmd.Parameters.AddWithValue("username", username);
+
+        var result = await cmd.ExecuteScalarAsync();
+        return result as int?;
+    }
+
+    public async Task SetPlayerBanStatusAsync(int userId, DateTime? banUntil, string? reason)
+    {
+        using var conn = new NpgsqlConnection(_authConnectionString);
+        await conn.OpenAsync();
+
+        using var cmd = new NpgsqlCommand(
+            "UPDATE users SET ban_until = @banUntil, ban_reason = @reason WHERE id = @userId", conn);
+        cmd.Parameters.AddWithValue("userId", userId);
+        cmd.Parameters.AddWithValue("banUntil", (object?)banUntil ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("reason", (object?)reason ?? DBNull.Value);
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<(bool isBanned, DateTime? banUntil, string? reason)> GetPlayerBanStatusAsync(int userId)
+    {
+        using var conn = new NpgsqlConnection(_authConnectionString);
+        await conn.OpenAsync();
+
+        using var cmd = new NpgsqlCommand(
+            "SELECT ban_until, ban_reason FROM users WHERE id = @userId", conn);
+        cmd.Parameters.AddWithValue("userId", userId);
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            var banUntil = reader.IsDBNull(0) ? (DateTime?)null : reader.GetDateTime(0);
+            var reason = reader.IsDBNull(1) ? null : reader.GetString(1);
+
+            // Check if ban has expired
+            if (banUntil.HasValue && banUntil.Value > DateTime.UtcNow)
+            {
+                return (true, banUntil, reason);
+            }
+        }
+
+        return (false, null, null);
     }
 }

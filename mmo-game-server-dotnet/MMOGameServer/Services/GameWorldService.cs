@@ -82,6 +82,13 @@ public class GameWorldService
         _clients.TryGetValue(clientId, out var client);
         return client;
     }
+
+    public ConnectedClient? GetClientByUsername(string username)
+    {
+        return _clients.Values.FirstOrDefault(c =>
+            c.IsAuthenticated &&
+            c.Username?.Equals(username, StringComparison.OrdinalIgnoreCase) == true);
+    }
     
     public IEnumerable<ConnectedClient> GetAuthenticatedClients()
     {

@@ -1,0 +1,15 @@
+/kick <username> - 5 minute timeout ban
+
+/tp <player> <target> or tp <player> <x> <y> - teleport
+
+/untp <player> - undo last teleport
+
+/ban <username> [reason] - permanent ban
+
+/unban <username> - remove ban
+
+/additem <username> <itemId> - add item to inventory
+
+/heal <username> - restore full health
+
+/restore <username>

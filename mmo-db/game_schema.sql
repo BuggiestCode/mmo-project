@@ -1,5 +1,6 @@
 -- Recreate cleanly
 DROP TABLE IF EXISTS players CASCADE;
+DROP TABLE IF EXISTS adminwhitelist CASCADE;
 
 CREATE TABLE players (
   id                         SERIAL   PRIMARY KEY,
@@ -26,4 +27,11 @@ CREATE TABLE players (
   skill_defence_xp           INTEGER   NOT NULL DEFAULT 0,
 
   inventory                  JSONB NOT NULL DEFAULT '[]'::jsonb
+);
+
+-- Game server bootstrap will attempt to insert the userID for account with username 'admin', if there is no user by this name it will fail, register the account and restart server (must be done for each env)
+CREATE TABLE adminwhitelist (
+  id                         SERIAL   PRIMARY KEY,
+  user_id                    INTEGER  NOT NULL UNIQUE,
+  FOREIGN KEY (user_id) REFERENCES players(user_id) ON DELETE CASCADE
 );

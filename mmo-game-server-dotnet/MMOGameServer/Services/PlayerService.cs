@@ -278,19 +278,19 @@ public class PlayerService
         
         await Task.CompletedTask;
     }
-    
+
     // === HELPER METHODS ===
-    
+
     /// <summary>
     /// Update player position and handle chunk tracking.
     /// </summary>
-    private void UpdatePlayerPosition(Player player, int newX, int newY)
+    public void UpdatePlayerPosition(Player player, int newX, int newY, bool teleport = false)
     {
         // Update chunk tracking and visibility
         _terrainService.UpdatePlayerChunk(player, newX, newY);
         
         // Update position
-        player.UpdatePosition(newX, newY);
+        player.UpdatePosition(newX, newY, teleport);
     }
     
     /// <summary>

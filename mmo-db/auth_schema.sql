@@ -5,7 +5,11 @@ DROP TABLE  IF EXISTS active_sessions CASCADE;
 CREATE TABLE users (
     id            SERIAL PRIMARY KEY,
     username      TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL
+    password_hash TEXT NOT NULL,
+
+    -- Ban/timeout system: NULL = not banned, timestamp = banned until (year 9999 = permanent)
+    ban_until                  TIMESTAMPTZ DEFAULT NULL,
+    ban_reason                 TEXT DEFAULT NULL
 );
 
 CREATE TABLE active_sessions (

@@ -11,7 +11,7 @@ public class GameMessageJsonConverter : JsonConverter<IGameMessage>
     {
         using var doc = JsonDocument.ParseValue(ref reader);
         var root = doc.RootElement;
-        
+
         if (!root.TryGetProperty("type", out var typeElement))
         {
             throw new JsonException("Message missing 'type' field");
