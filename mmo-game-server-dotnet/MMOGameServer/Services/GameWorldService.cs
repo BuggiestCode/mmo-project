@@ -126,13 +126,26 @@ public class GameWorldService
         // Remove client and session
         await RemoveClientAsync(client.Id);
 
-        // Close WebSocket connection
-        if (client.WebSocket?.State == System.Net.WebSockets.WebSocketState.Open)
+        // Close WebSocket connection if it's still open
+        if (client.WebSocket != null)
         {
-            await client.WebSocket.CloseAsync(
-                System.Net.WebSockets.WebSocketCloseStatus.NormalClosure,
-                reason,
-                CancellationToken.None);
+            var state = client.WebSocket.State;
+            if (state == System.Net.WebSockets.WebSocketState.Open ||
+                state == System.Net.WebSockets.WebSocketState.CloseReceived)
+            {
+                try
+                {
+                    await client.WebSocket.CloseAsync(
+                        System.Net.WebSockets.WebSocketCloseStatus.NormalClosure,
+                        reason,
+                        CancellationToken.None);
+                }
+                catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.InvalidState)
+                {
+                    // Client already closed the connection, this is fine for logout
+                    _logger.LogDebug("WebSocket already closed by client during logout");
+                }
+            }
         }
     }
     
