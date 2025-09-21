@@ -34,12 +34,35 @@ module.exports = (db, JWT_SECRET, signToken) => {
     try {
       const { username, password } = req.body;
       const { rows } = await db.query(
-        `SELECT id, password_hash FROM users WHERE username=$1`,
+        `SELECT id, password_hash, ban_until, ban_reason FROM users WHERE username=$1`,
         [username]
       );
       if (!rows.length) return res.status(401).send("No such user");
 
       const user = rows[0];
+
+      // Check if user is banned
+      if (user.ban_until) {
+        const banDate = new Date(user.ban_until);
+        const now = new Date();
+
+        // Check for permanent ban (year 9999)
+        if (banDate.getFullYear() === 9999) {
+          return res.status(403).json({
+            error: "Account permanently banned",
+            message: `Your account has been permanently banned. Reason: ${user.ban_reason || 'No reason provided'}`
+          });
+        }
+
+        // Check for temporary ban
+        if (banDate > now) {
+          return res.status(403).json({
+            error: "Account temporarily banned",
+            message: `Your account is banned until ${banDate.toISOString()}. Reason: ${user.ban_reason || 'No reason provided'}`
+          });
+        }
+      }
+
       const match = await bcrypt.compare(password, user.password_hash);
       if (!match) return res.status(401).send("Bad password");
 

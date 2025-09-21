@@ -71,8 +71,8 @@ fly secrets set \
   AUTH_DATABASE_URL=postgres://postgres:[PASSWORD]@mmo-db-staging.flycast:5432/mmo_auth \
   GAME_DATABASE_URL=postgres://postgres:[PASSWORD]@mmo-db-staging.flycast:5432/mmo_game \
   JWT_SECRET=[SAME_AS_AUTH_APP] \
-  WORLD_NAME=world1-staging \
-  -a mmo-world1-staging
+  WORLD_NAME=world2 \
+  -a mmo-world2-staging
 
 # Deploy
 fly deploy -a mmo-world1-staging
@@ -107,7 +107,7 @@ else
 fi
 
 APP_NAME="mmo-world${WORLD_NUM}-${ENV}"
-WORLD_NAME="world${WORLD_NUM}-${ENV}"
+WORLD_NAME="world${WORLD_NUM}"
 
 echo "Creating world server: $APP_NAME"
 

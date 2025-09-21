@@ -288,23 +288,38 @@ public class DatabaseService
 
                     await reader.CloseAsync();
 
-                    // Check if session is recent and active (within last 30 seconds for soft disconnect window)
-                    var timeSinceHeartbeat = DateTime.UtcNow - lastHeartbeat;
-                    if (connectionState == 0 || timeSinceHeartbeat.TotalSeconds < 30)
+                    // Check if this is the same world (soft disconnect scenario)
+                    if (existingWorld == _worldName)
                     {
-                        Console.WriteLine($"User {userId} already has active session on {existingWorld} (state: {connectionState}, heartbeat: {timeSinceHeartbeat.TotalSeconds}s ago)");
-                        await transaction.RollbackAsync();
-                        return false; // Session creation denied - user already logged in
-                    }
+                        // Same world - check if session is recent for soft disconnect
+                        var timeSinceHeartbeat = DateTime.UtcNow - lastHeartbeat;
 
-                    // Old session exists but is stale, update it
-                    using var updateCmd = new NpgsqlCommand(@"
-                        UPDATE active_sessions 
-                        SET world = @world, connection_state = 0, last_heartbeat = NOW() 
-                        WHERE user_id = @userId", conn, transaction);
-                    updateCmd.Parameters.AddWithValue("userId", userId);
-                    updateCmd.Parameters.AddWithValue("world", _worldName);
-                    await updateCmd.ExecuteNonQueryAsync();
+                        if (connectionState == 0 || timeSinceHeartbeat.TotalSeconds < 30)
+                        {
+                            // Active session on same world - deny
+                            Console.WriteLine($"User {userId} already has active session on {existingWorld} (state: {connectionState}, heartbeat: {timeSinceHeartbeat.TotalSeconds}s ago)");
+                            await transaction.RollbackAsync();
+                            return false;
+                        }
+
+                        // Stale session on same world - allow reconnection
+                        Console.WriteLine($"User {userId} reconnecting to {_worldName} (soft disconnect recovery)");
+                        using var updateCmd = new NpgsqlCommand(@"
+                            UPDATE active_sessions
+                            SET world = @world, connection_state = 0, last_heartbeat = NOW()
+                            WHERE user_id = @userId", conn, transaction);
+                        updateCmd.Parameters.AddWithValue("userId", userId);
+                        updateCmd.Parameters.AddWithValue("world", _worldName);
+                        await updateCmd.ExecuteNonQueryAsync();
+                    }
+                    else
+                    {
+                        // Different world - ALWAYS deny, even if session is stale
+                        // This prevents soft disconnect from working across worlds
+                        Console.WriteLine($"User {userId} has session on different world {existingWorld} - blocking login to {_worldName}");
+                        await transaction.RollbackAsync();
+                        return false; // Return false to trigger proper error message
+                    }
                 }
                 else
                 {
@@ -621,7 +636,53 @@ public class DatabaseService
 
         return activeSessions;
     }
-    
+
+    public async Task<List<(int userId, DateTime lastHeartbeat)>> GetActiveSessionsWithHeartbeatAsync()
+    {
+        var sessions = new List<(int userId, DateTime lastHeartbeat)>();
+
+        try
+        {
+            using var conn = new NpgsqlConnection(_authConnectionString);
+            await conn.OpenAsync();
+
+            using var cmd = new NpgsqlCommand(
+                "SELECT user_id, last_heartbeat FROM active_sessions WHERE world = @world AND connection_state = 0", conn);
+            cmd.Parameters.AddWithValue("world", _worldName);
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                sessions.Add((reader.GetInt32(0), reader.GetDateTime(1)));
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to get active sessions with heartbeat for world {_worldName}: {ex.Message}");
+        }
+
+        return sessions;
+    }
+
+    public async Task UpdateSessionHeartbeatAsync(int userId)
+    {
+        try
+        {
+            using var conn = new NpgsqlConnection(_authConnectionString);
+            await conn.OpenAsync();
+
+            using var cmd = new NpgsqlCommand(
+                "UPDATE active_sessions SET last_heartbeat = NOW() WHERE user_id = @userId", conn);
+            cmd.Parameters.AddWithValue("userId", userId);
+
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to update session heartbeat for user {userId}: {ex.Message}");
+        }
+    }
+
     /*
     // ToDo implement the below methods properly for auditing the auth players against their game database records (since cross-DB foreign keys aren't possible so we have no way to
     // validate that the number of "auth" login players == gameDatabase.players, we might have orphaned players where the auth player was deleted (somehow by the admins))

@@ -38,8 +38,8 @@ public class GameLoopService : BackgroundService
         _combatService = combatService;
         _logger = logger;
 
-        // Separate timer for heartbeat/cleanup (30 seconds)
-        _heartbeatTimer = new Timer(HeartbeatClients, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        // Separate timer for heartbeat/cleanup (10 seconds for faster session validation)
+        _heartbeatTimer = new Timer(HeartbeatClients, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
 
         // NPC audit timer (10 seconds) - only if NPCService is available
         if (_npcService != null)
@@ -486,59 +486,35 @@ public class GameLoopService : BackgroundService
 
     private async Task OnDisconnectAsync(ConnectedClient client)
     {
-        HashSet<string> playerVisibilityChunks = new HashSet<string>();
-
         if (client.Player != null)
         {
-            // Send the quit request to ALL players (including quitter)
-            await _gameWorld.BroadcastToAllAsync(new { type = "quitPlayer", id = client.Player.UserId });
+            // Store visibility chunks before removal (for zone cleanup)
+            var playerVisibilityChunks = new HashSet<string>(client.Player.VisibilityChunks);
 
-            // Save player position - handle death state specially
-            int saveX = client.Player.X;
-            int saveY = client.Player.Y;
-            
-            // If player is dead or awaiting respawn, save them at spawn point instead
-            if (!client.Player.IsAlive || client.Player.IsAwaitingRespawn)
-            {
-                saveX = 0;
-                saveY = 0;
-                _logger.LogInformation($"Player {client.Player.UserId} logged out while dead/respawning, saving at spawn point (0,0) instead of death location ({client.Player.X:F2}, {client.Player.Y:F2})");
-            }
-            
-            // Temporarily update player position for save
-            var originalX = client.Player.X;
-            var originalY = client.Player.Y;
-            client.Player.X = saveX;
-            client.Player.Y = saveY;
-            
-            // Use comprehensive save which handles respawn edge cases
-            await _databaseService.SavePlayerToDatabase(client.Player);
-            
-            // Restore original position
-            client.Player.X = originalX;
-            client.Player.Y = originalY;
-
-            playerVisibilityChunks.UnionWith(client.Player.VisibilityChunks);
-
-            // Remove from terrain tracking
+            // Remove from terrain tracking before logout
             _terrainService.RemovePlayer(client.Player);
-        }
 
-        // Now trigger zone cleanup AFTER client is removed from authenticated clients
-        if (playerVisibilityChunks.Any())
-        {
-            _npcService?.HandleChunksExitedVisibility(playerVisibilityChunks);
+            // Use centralized force logout for timeouts
+            await _gameWorld.ForceLogoutAsync(client, "Timeout", true);
+
+            // Trigger zone cleanup AFTER client is removed
+            if (playerVisibilityChunks.Any())
+            {
+                _npcService?.HandleChunksExitedVisibility(playerVisibilityChunks);
+            }
         }
-        
-        // Remove client and close connection
-        await _gameWorld.RemoveClientAsync(client.Id);
-        
-        if (client.WebSocket?.State == System.Net.WebSockets.WebSocketState.Open)
+        else
         {
-            await client.WebSocket.CloseAsync(
-                System.Net.WebSockets.WebSocketCloseStatus.NormalClosure,
-                "Timeout",
-                CancellationToken.None);
+            // No player associated, just remove the client
+            await _gameWorld.RemoveClientAsync(client.Id);
+
+            if (client.WebSocket?.State == System.Net.WebSockets.WebSocketState.Open)
+            {
+                await client.WebSocket.CloseAsync(
+                    System.Net.WebSockets.WebSocketCloseStatus.NormalClosure,
+                    "Timeout",
+                    CancellationToken.None);
+            }
         }
     }
     
@@ -546,28 +522,69 @@ public class GameLoopService : BackgroundService
     {
         try
         {
-            // Get all active sessions from database for this world
-            var databaseSessions = await _databaseService.GetActiveSessionsForWorldAsync();
-            
+            // Get all active sessions with heartbeat times from database for this world
+            var databaseSessionsWithHeartbeat = await _databaseService.GetActiveSessionsWithHeartbeatAsync();
+            var databaseSessionSet = new HashSet<int>(databaseSessionsWithHeartbeat.Select(s => s.userId));
+
             // Get all authenticated clients currently in memory
-            var memoryUserIds = _gameWorld.GetAuthenticatedClients()
+            var authenticatedClients = _gameWorld.GetAuthenticatedClients()
                 .Where(c => c.Player != null)
+                .ToList();
+
+            var memoryUserIds = authenticatedClients
                 .Select(c => c.Player!.UserId)
                 .ToHashSet();
-            
+
+            // Update heartbeats for all active clients
+            foreach (var client in authenticatedClients)
+            {
+                if (client.LastActivity.HasValue &&
+                    (DateTime.UtcNow - client.LastActivity.Value).TotalSeconds < 30)
+                {
+                    // Only update heartbeat if client has been active in last 30 seconds
+                    await _databaseService.UpdateSessionHeartbeatAsync(client.Player!.UserId);
+                }
+            }
+
+            // CRITICAL: Check for clients without sessions (this should NEVER happen)
+            var clientsWithoutSessions = authenticatedClients
+                .Where(c => !databaseSessionSet.Contains(c.Player!.UserId))
+                .ToList();
+
+            if (clientsWithoutSessions.Any())
+            {
+                _logger.LogCritical("CRITICAL: Found {Count} authenticated clients WITHOUT sessions! UserIds: {UserIds}",
+                    clientsWithoutSessions.Count,
+                    string.Join(", ", clientsWithoutSessions.Select(c => c.Player!.UserId)));
+
+                // Force logout these clients immediately - they should NOT be connected without a session
+                foreach (var client in clientsWithoutSessions)
+                {
+                    _logger.LogCritical("Force disconnecting client {ClientId} (User {UserId}) - no session found!",
+                        client.Id, client.Player!.UserId);
+
+                    await _gameWorld.ForceLogoutAsync(client, "Invalid session state", false);
+                }
+            }
+
             // Find sessions in database that don't have corresponding in-memory clients
-            var orphanedSessions = databaseSessions.Where(userId => !memoryUserIds.Contains(userId)).ToList();
-            
+            // Only remove these if they've been orphaned for > 30 seconds (grace period for reconnection)
+            var orphanedSessions = databaseSessionsWithHeartbeat
+                .Where(s => !memoryUserIds.Contains(s.userId))
+                .Where(s => (DateTime.UtcNow - s.lastHeartbeat).TotalSeconds > 30)
+                .ToList();
+
             if (orphanedSessions.Any())
             {
-                _logger.LogWarning("Found {Count} orphaned sessions: {UserIds}", 
-                    orphanedSessions.Count, string.Join(", ", orphanedSessions));
-                
-                // Remove orphaned sessions from database
-                foreach (var userId in orphanedSessions)
+                _logger.LogWarning("Found {Count} orphaned sessions (stale > 30s): {UserIds}",
+                    orphanedSessions.Count, string.Join(", ", orphanedSessions.Select(s => s.userId)));
+
+                // Remove orphaned sessions that have been stale for > 30 seconds
+                foreach (var session in orphanedSessions)
                 {
-                    await _databaseService.RemoveSessionAsync(userId);
-                    _logger.LogInformation("Cleaned up orphaned session for user {UserId}", userId);
+                    await _databaseService.RemoveSessionAsync(session.userId);
+                    _logger.LogInformation("Cleaned up orphaned session for user {UserId} (last heartbeat: {LastHeartbeat})",
+                        session.userId, session.lastHeartbeat);
                 }
             }
         }

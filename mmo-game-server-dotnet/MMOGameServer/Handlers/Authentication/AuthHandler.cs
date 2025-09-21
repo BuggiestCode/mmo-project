@@ -107,12 +107,26 @@ public class AuthHandler : IMessageHandler<AuthMessage>
             _logger.LogInformation($"Creating session for user {userId}");
             if (!await _database.CreateSessionAsync(userId))
             {
-                _logger.LogWarning("Failed to create session - concurrent login detected");
-                await client.SendMessageAsync(new ErrorResponse
+                // Session creation failed - check why
+                var (existingSession, _, worldName) = await _database.CheckExistingSessionAsync(userId);
+                if (existingSession && worldName != null)
                 {
-                    Code = "ALREADY_LOGGED_IN",
-                    Message = "User login detected on another connection. Please try again."
-                });
+                    _logger.LogWarning($"Failed to create session - user logged in on {worldName}");
+                    await client.SendMessageAsync(new ErrorResponse
+                    {
+                        Code = "ALREADY_LOGGED_IN",
+                        Message = $"You are already logged into {worldName}. Please log out first."
+                    });
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to create session - concurrent login detected");
+                    await client.SendMessageAsync(new ErrorResponse
+                    {
+                        Code = "ALREADY_LOGGED_IN",
+                        Message = "User login detected on another connection. Please try again."
+                    });
+                }
                 return;
             }
             
@@ -121,10 +135,12 @@ public class AuthHandler : IMessageHandler<AuthMessage>
             if (player == null)
             {
                 _logger.LogError("Failed to load/create player");
-                await client.SendMessageAsync(new AuthResponse 
-                { 
-                    Success = false, 
-                    Error = "Failed to load player" 
+                // CRITICAL: Remove the session we just created before returning
+                await _database.RemoveSessionAsync(userId);
+                await client.SendMessageAsync(new AuthResponse
+                {
+                    Success = false,
+                    Error = "Failed to load player"
                 });
                 return;
             }
@@ -159,6 +175,9 @@ public class AuthHandler : IMessageHandler<AuthMessage>
                     Code = "BANNED",
                     Message = banMessage
                 });
+
+                // CRITICAL: Remove the session we just created before returning
+                await _database.RemoveSessionAsync(userId);
 
                 if (client.WebSocket?.State == System.Net.WebSockets.WebSocketState.Open)
                 {
@@ -208,8 +227,33 @@ public class AuthHandler : IMessageHandler<AuthMessage>
             });
             */
             
-            _logger.LogInformation($"Player {userId} ({username}) authorized successfully");
-            
+            // CRITICAL: Final session validation before allowing login
+            var (finalSessionExists, _, _) = await _database.CheckExistingSessionAsync(userId);
+            if (!finalSessionExists)
+            {
+                _logger.LogCritical($"CRITICAL: No session exists after authentication for user {userId}! Aborting login.");
+                client.IsAuthenticated = false;
+                client.Player = null;
+                client.Username = null;
+
+                await client.SendMessageAsync(new ErrorResponse
+                {
+                    Code = "SESSION_ERROR",
+                    Message = "Session validation failed. Please try logging in again."
+                });
+
+                if (client.WebSocket?.State == System.Net.WebSockets.WebSocketState.Open)
+                {
+                    await client.WebSocket.CloseAsync(
+                        System.Net.WebSockets.WebSocketCloseStatus.InternalServerError,
+                        "Session error",
+                        CancellationToken.None);
+                }
+                return;
+            }
+
+            _logger.LogInformation($"Player {userId} ({username}) authorized successfully with valid session");
+
             // Spawn player in world
             await SpawnWorldPlayerAsync(client);
         }

@@ -9,6 +9,7 @@ public class GameWorldService
 {
     private readonly ConcurrentDictionary<string, ConnectedClient> _clients = new();
     private readonly DatabaseService _databaseService;
+    private readonly ILogger<GameWorldService> _logger;
 
     // Time of Day tracking
     private int _currentTimeOfDayTick = 6000; // Start at 6am (quarter through the day)
@@ -16,9 +17,10 @@ public class GameWorldService
     public const int TicksPerDay = 24000; // Matching your front-end scale
     public const int TicksPerGameLoopTick = 1; // Advance 20 time ticks per game loop tick (500ms)
 
-    public GameWorldService(DatabaseService databaseService)
+    public GameWorldService(DatabaseService databaseService, ILogger<GameWorldService> logger)
     {
         _databaseService = databaseService;
+        _logger = logger;
     }
     
     public void AddClient(ConnectedClient client)
@@ -74,6 +76,63 @@ public class GameWorldService
                 await _databaseService.RemoveSessionAsync(client.Player.UserId);
             }
             Console.WriteLine($"Client {clientId} disconnected. Total clients: {_clients.Count}");
+        }
+    }
+
+    /// <summary>
+    /// Force logout a client - used for timeouts, kicks, bans, and intentional logouts.
+    /// This performs a full logout: saves player, removes session, broadcasts quit, closes connection.
+    /// </summary>
+    public async Task ForceLogoutAsync(ConnectedClient client, string reason = "Logout", bool savePlayer = true)
+    {
+        if (client.Player == null) return;
+
+        _logger.LogInformation($"Force logout for player {client.Player.UserId} - Reason: {reason}");
+        client.IsIntentionalLogout = true;
+
+        if (savePlayer)
+        {
+            // Save player position - handle death state specially
+            int saveX = client.Player.X;
+            int saveY = client.Player.Y;
+
+            // If player is dead or awaiting respawn, save them at spawn point instead
+            if (!client.Player.IsAlive || client.Player.IsAwaitingRespawn)
+            {
+                saveX = 0;
+                saveY = 0;
+                _logger.LogInformation($"Player {client.Player.UserId} logged out while dead/respawning, saving at spawn point (0,0) instead of death location ({client.Player.X:F2}, {client.Player.Y:F2})");
+            }
+
+            // Temporarily update player position for save
+            var originalX = client.Player.X;
+            var originalY = client.Player.Y;
+            client.Player.X = saveX;
+            client.Player.Y = saveY;
+
+            // Use comprehensive save which handles respawn edge cases
+            await _databaseService.SavePlayerToDatabase(client.Player);
+
+            // Restore original position for cleanup
+            client.Player.X = originalX;
+            client.Player.Y = originalY;
+        }
+
+        // Broadcast quit to other players
+        await BroadcastToAllAsync(
+            new { type = "quitPlayer", id = client.Player.UserId },
+            client.Id);
+
+        // Remove client and session
+        await RemoveClientAsync(client.Id);
+
+        // Close WebSocket connection
+        if (client.WebSocket?.State == System.Net.WebSockets.WebSocketState.Open)
+        {
+            await client.WebSocket.CloseAsync(
+                System.Net.WebSockets.WebSocketCloseStatus.NormalClosure,
+                reason,
+                CancellationToken.None);
         }
     }
     

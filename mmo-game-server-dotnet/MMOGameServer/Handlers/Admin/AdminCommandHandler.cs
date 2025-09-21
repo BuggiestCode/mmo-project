@@ -97,15 +97,9 @@ public class AdminCommandHandler : IMessageHandler<AdminCommandMessage>
         var banUntil = DateTime.UtcNow.AddMinutes(5);
         await _databaseService.SetPlayerBanStatusAsync(targetClient.Player!.UserId, banUntil, "Kicked by admin");
 
-        // Force disconnect
-        if (targetClient.WebSocket?.State == System.Net.WebSockets.WebSocketState.Open)
-        {
-            await targetClient.WebSocket.CloseAsync(
-                System.Net.WebSockets.WebSocketCloseStatus.PolicyViolation,
-                "Kicked by administrator (5 minute timeout)",
-                CancellationToken.None);
-        }
-        await _gameWorld.RemoveClientAsync(targetClient.Id);
+        // Force logout with save
+        await _gameWorld.ForceLogoutAsync(targetClient, "Kicked by administrator (5 minute timeout)", true);
+
         Console.WriteLine($"Admin {admin.Username} kicked {targetUsername} (5 minute timeout)");
     }
 
@@ -215,18 +209,11 @@ public class AdminCommandHandler : IMessageHandler<AdminCommandMessage>
         var permanentBan = new DateTime(9999, 12, 31, 23, 59, 59, DateTimeKind.Utc);
         await _databaseService.SetPlayerBanStatusAsync(userId.Value, permanentBan, reason);
 
-        // If online, disconnect them
+        // If online, force logout
         var targetClient = _gameWorld.GetClientByUsername(targetUsername);
         if (targetClient != null)
         {
-            if (targetClient.WebSocket?.State == System.Net.WebSockets.WebSocketState.Open)
-            {
-                await targetClient.WebSocket.CloseAsync(
-                    System.Net.WebSockets.WebSocketCloseStatus.PolicyViolation,
-                    "Banned: " + reason,
-                    CancellationToken.None);
-            }
-            await _gameWorld.RemoveClientAsync(targetClient.Id);
+            await _gameWorld.ForceLogoutAsync(targetClient, "Banned: " + reason, true);
         }
 
         Console.WriteLine($"Admin {admin.Username} permanently banned {targetUsername}. Reason: {reason}");

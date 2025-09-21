@@ -61,7 +61,7 @@ public class CharacterAttributesHandler : IMessageHandler<SaveCharacterLookAttri
         
         // Get all players currently visible to this client
         var visiblePlayerIds = _terrain.GetVisiblePlayers(client.Player);
-        
+
         // Create custom look attributes update message
         var lookUpdateMessage = new UpdatePlayerLookAttributesResponse
         {
