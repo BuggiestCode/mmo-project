@@ -2,10 +2,19 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const {
+  registrationLimiter,
+  loginRateLimiter,
+  LoginAttemptTracker
+} = require("../middleware/rateLimiter");
 
 // Expect these to be passed in by the main server
 module.exports = (db, JWT_SECRET, signToken) => {
-  router.post("/register", async (req, res) => {
+  // Initialize login attempt tracker
+  const loginTracker = new LoginAttemptTracker(db);
+
+  // Apply rate limiting to registration
+  router.post("/register", registrationLimiter, async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).send("Missing fields");
 
@@ -29,15 +38,23 @@ module.exports = (db, JWT_SECRET, signToken) => {
     }
   });
   
-  // Login
-  router.post("/login", async (req, res) => {
+  // Login with rate limiting and account lock checking
+  router.post("/login",
+    loginRateLimiter, // IP-based rate limiting
+    async (req, res) => {
     try {
       const { username, password } = req.body;
+      const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.ip;
+
       const { rows } = await db.query(
         `SELECT id, password_hash, ban_until, ban_reason FROM users WHERE username=$1`,
         [username]
       );
-      if (!rows.length) return res.status(401).send("No such user");
+      if (!rows.length) {
+        // Track failed attempt even for non-existent users (to prevent username enumeration)
+        await loginTracker.trackFailedAttempt(username, ip);
+        return res.status(401).send("Invalid credentials");
+      }
 
       const user = rows[0];
 
@@ -64,7 +81,22 @@ module.exports = (db, JWT_SECRET, signToken) => {
       }
 
       const match = await bcrypt.compare(password, user.password_hash);
-      if (!match) return res.status(401).send("Bad password");
+      if (!match) {
+        // Track failed login attempt
+        const attemptResult = await loginTracker.trackFailedAttempt(username, ip);
+
+        if (attemptResult.locked) {
+          return res.status(429).json({
+            error: "Account temporarily locked",
+            message: `Too many failed login attempts. Account locked until ${attemptResult.lockedUntil.toISOString()}`
+          });
+        }
+
+        return res.status(401).json({
+          error: "Invalid credentials",
+          remainingAttempts: attemptResult.remainingAttempts
+        });
+      }
 
       // Check if user already has an active session in the database
       try {
@@ -95,6 +127,9 @@ module.exports = (db, JWT_SECRET, signToken) => {
         console.error('Session check failed:', sessionError);
         // On error, allow login but log the issue
       }
+
+      // Track successful login
+      await loginTracker.trackSuccessfulLogin(username, ip);
 
       const token = signToken({ id: Number(user.id), username });
       return res.json({ token });
