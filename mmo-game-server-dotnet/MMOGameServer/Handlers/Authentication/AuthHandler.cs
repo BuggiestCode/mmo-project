@@ -103,6 +103,21 @@ public class AuthHandler : IMessageHandler<AuthMessage>
                 }
             }
             
+            // Check world capacity before creating session
+            var currentPlayerCount = await _database.GetCurrentWorldPlayerCountAsync();
+            if (currentPlayerCount >= _database.WorldConnectionLimit)
+            {
+                _logger.LogWarning($"World {_database.WorldName} is full: {currentPlayerCount}/{_database.WorldConnectionLimit}");
+                await client.SendMessageAsync(new ErrorResponse
+                {
+                    Code = "WORLD_FULL",
+                    Message = $"World is currently full ({currentPlayerCount}/{_database.WorldConnectionLimit}). Please try another world."
+                });
+
+                await CloseConnectionWithDelay(client);
+                return;
+            }
+
             // Create new session
             _logger.LogInformation($"Creating session for user {userId}");
             if (!await _database.CreateSessionAsync(userId))

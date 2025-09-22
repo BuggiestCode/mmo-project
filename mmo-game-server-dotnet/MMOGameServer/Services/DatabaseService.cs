@@ -10,6 +10,10 @@ public class DatabaseService
     private readonly string _authConnectionString;
     private readonly string _gameConnectionString;
     private readonly string _worldName;
+    private readonly int _worldConnectionLimit;
+
+    public string WorldName => _worldName;
+    public int WorldConnectionLimit => _worldConnectionLimit;
 
     public DatabaseService()
     {
@@ -24,6 +28,7 @@ public class DatabaseService
         _gameConnectionString = ConvertUrlToConnectionString(gameUrl);
 
         _worldName = Environment.GetEnvironmentVariable("WORLD_NAME") ?? "world1-dotnet";
+        _worldConnectionLimit = int.Parse(Environment.GetEnvironmentVariable("WORLD_CON_LIMIT") ?? "100");
 
         // Bootstrap admin account on startup
         Task.Run(async () => await EnsureBootstrapAdminAsync());
@@ -635,6 +640,27 @@ public class DatabaseService
         }
 
         return activeSessions;
+    }
+
+    public async Task<int> GetCurrentWorldPlayerCountAsync()
+    {
+        try
+        {
+            using var conn = new NpgsqlConnection(_authConnectionString);
+            await conn.OpenAsync();
+
+            using var cmd = new NpgsqlCommand(
+                "SELECT COUNT(*) FROM active_sessions WHERE world = @world AND connection_state = 0", conn);
+            cmd.Parameters.AddWithValue("world", _worldName);
+
+            var count = await cmd.ExecuteScalarAsync();
+            return Convert.ToInt32(count ?? 0);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to get player count for world {_worldName}: {ex.Message}");
+            return 0;
+        }
     }
 
     public async Task<List<(int userId, DateTime lastHeartbeat)>> GetActiveSessionsWithHeartbeatAsync()

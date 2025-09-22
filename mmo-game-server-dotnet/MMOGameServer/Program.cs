@@ -114,11 +114,13 @@ app.UseMiddleware<WebSocketMiddleware>();
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 var worldName = Environment.GetEnvironmentVariable("WORLD_NAME") ?? "world1-dotnet";
+var worldConLimit = int.Parse(Environment.GetEnvironmentVariable("WORLD_CON_LIMIT") ?? "100");
 
 Console.WriteLine($"========================================");
 Console.WriteLine($"MMO Game Server (.NET) Starting");
 Console.WriteLine($"World: {worldName}");
 Console.WriteLine($"Port: {port}");
+Console.WriteLine($"Max Connections: {worldConLimit}");
 Console.WriteLine($"WebSocket endpoint: ws://[hostname]:{port}/ws");
 Console.WriteLine($"Health endpoint: http://[hostname]:{port}/api/health");
 Console.WriteLine($"========================================");

@@ -72,6 +72,7 @@ fly secrets set \
   GAME_DATABASE_URL=postgres://postgres:[PASSWORD]@mmo-db-staging.flycast:5432/mmo_game \
   JWT_SECRET=[SAME_AS_AUTH_APP] \
   WORLD_NAME=world2 \
+  WORLD_CON_LIMIT=100\
   -a mmo-world2-staging
 
 # Deploy
