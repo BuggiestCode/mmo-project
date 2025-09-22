@@ -649,8 +649,10 @@ public class DatabaseService
             using var conn = new NpgsqlConnection(_authConnectionString);
             await conn.OpenAsync();
 
+            // Count ALL sessions for this world, including soft disconnected (connection_state = 1)
+            // This ensures soft disconnected players still count toward the world capacity
             using var cmd = new NpgsqlCommand(
-                "SELECT COUNT(*) FROM active_sessions WHERE world = @world AND connection_state = 0", conn);
+                "SELECT COUNT(*) FROM active_sessions WHERE world = @world", conn);
             cmd.Parameters.AddWithValue("world", _worldName);
 
             var count = await cmd.ExecuteScalarAsync();

@@ -104,5 +104,35 @@ module.exports = (db, JWT_SECRET, signToken) => {
     }
   });
 
+  // Get world connection counts
+  router.get("/worlds/status", async (req, res) => {
+    try {
+      // Query to get count of all sessions (both connected and soft-disconnected) per world
+      const { rows } = await db.query(
+        `SELECT world, COUNT(*) as active_connections
+         FROM active_sessions
+         GROUP BY world
+         ORDER BY world`
+      );
+
+      // Transform to object with world names as keys
+      const worldCounts = {};
+      rows.forEach(row => {
+        worldCounts[row.world] = parseInt(row.active_connections);
+      });
+
+      return res.json({
+        status: "ok",
+        worlds: worldCounts
+      });
+    } catch (err) {
+      console.error("Error fetching world status:", err);
+      return res.status(500).json({
+        error: "Server error",
+        message: "Failed to fetch world connection counts"
+      });
+    }
+  });
+
   return router;
 };
