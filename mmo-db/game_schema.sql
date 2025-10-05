@@ -18,10 +18,16 @@ CREATE TABLE players (
   is_male                    BOOLEAN           DEFAULT TRUE,
 
   skill_health_cur_level     SMALLINT  NOT NULL DEFAULT 10,
-  skill_health_xp            INTEGER   NOT NULL DEFAULT 5065,
+  skill_health_xp            INTEGER   NOT NULL DEFAULT 2203,
 
   skill_attack_cur_level     SMALLINT  NOT NULL DEFAULT 1,
   skill_attack_xp            INTEGER   NOT NULL DEFAULT 0,
+
+  skill_strength_cur_level   SMALLINT  NOT NULL DEFAULT 1,
+  skill_strength_xp          INTEGER   NOT NULL DEFAULT 0,
+
+  skill_defence_cur_level    SMALLINT  NOT NULL DEFAULT 1,
+  skill_defence_xp           INTEGER   NOT NULL DEFAULT 0,
 
   skill_defence_cur_level    SMALLINT  NOT NULL DEFAULT 1,
   skill_defence_xp           INTEGER   NOT NULL DEFAULT 0,

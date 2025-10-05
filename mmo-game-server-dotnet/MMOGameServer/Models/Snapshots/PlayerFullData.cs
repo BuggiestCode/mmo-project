@@ -58,4 +58,8 @@ public class PlayerFullData
     // Inventory
     [JsonPropertyName("inventory")]
     public int[]? Inventory { get; set; }
+
+    // Combat level
+    [JsonPropertyName("curLevel")]
+    public int CurLevel { get; set; }
 }

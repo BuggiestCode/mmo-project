@@ -53,7 +53,7 @@ public class GameDataLoaderService
         {
             var values = ParseCSVLine(lines[i]);
             _logger.LogDebug($"Parsing NPC line {i}: {lines[i]} -> {values.Length} values");
-            if (values.Length < 7) continue; // Need at least the core fields
+            if (values.Length < 8) continue; // Need at least the core fields
             
             var npc = new NPCDefinition
             {
@@ -61,11 +61,12 @@ public class GameDataLoaderService
                 Name = values[0],
                 HealthLevel = int.Parse(values[1]),
                 AttackLevel = int.Parse(values[2]),
-                DefenceLevel = int.Parse(values[3]),
-                AttackSpeedTicks = int.Parse(values[4]),
-                IsAggressive = bool.Parse(values[5]),
-                Drops = ParseDrops(values.Length > 6 ? values[6] : ""),
-                TertiaryDrops = ParseTertiaryDrops(values.Length > 7 ? values[7] : "")
+                StrengthLevel = int.Parse(values[3]),
+                DefenceLevel = int.Parse(values[4]),
+                AttackSpeedTicks = int.Parse(values[5]),
+                IsAggressive = bool.Parse(values[6]),
+                Drops = ParseDrops(values.Length > 6 ? values[7] : ""),
+                TertiaryDrops = ParseTertiaryDrops(values.Length > 7 ? values[8] : "")
             };
             
             _npcDefinitions[npc.Uid] = npc;

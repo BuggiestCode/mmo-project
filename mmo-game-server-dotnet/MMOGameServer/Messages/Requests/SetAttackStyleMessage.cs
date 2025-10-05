@@ -15,5 +15,6 @@ public class SetAttackStyleMessage : IGameMessage
 public enum AttackStyle
 {
     Aggressive = 0,  // Trains ATTACK only
-    Defensive = 1    // Trains DEFENCE only
+    Controlled = 1,  // Trains STRENGTH only
+    Defensive = 2    // Trains DEFENCE only
 }

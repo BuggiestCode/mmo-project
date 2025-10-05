@@ -349,6 +349,34 @@ public class GameLoopService : BackgroundService
                         // Perform the actual respawn
                         client.Player.PerformRespawn();
 
+                        // Validate respawn position has a valid chunk
+                        var (respawnChunkX, respawnChunkY) = _terrainService.WorldPositionToChunkCoord(client.Player.X, client.Player.Y);
+                        var respawnChunkKey = $"{respawnChunkX},{respawnChunkY}";
+
+                        if (!_terrainService.TryGetChunk(respawnChunkKey, out _))
+                        {
+                            // Try to load the chunk
+                            try
+                            {
+                                _terrainService.EnsureChunksLoaded(new HashSet<string> { respawnChunkKey });
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, $"Failed to load respawn chunk {respawnChunkKey} for player {client.Player.UserId}");
+                            }
+
+                            // If still can't get the chunk, force to origin
+                            if (!_terrainService.TryGetChunk(respawnChunkKey, out _))
+                            {
+                                _logger.LogWarning($"Player {client.Player.UserId} respawn position ({client.Player.X}, {client.Player.Y}) is on invalid chunk {respawnChunkKey}. Forcing to spawn.");
+                                // Use the spawn coordinates
+                                client.Player.UpdatePosition(Player.SpawnX, Player.SpawnY, true);
+
+                                // Save the corrected position
+                                await _databaseService.SavePlayerPositionAsync(client.Player.UserId, Player.SpawnX, Player.SpawnY, client.Player.Facing);
+                            }
+                        }
+
                         // Player position changed significantly, trigger chunk update
                         _terrainService.UpdatePlayerChunk(client.Player, client.Player.X, client.Player.Y);
                     }

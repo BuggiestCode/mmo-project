@@ -33,6 +33,14 @@ public class SetTargetHandler : IMessageHandler<SetTargetMessage>
             return;
         }
 
+        // Check rate limit (except for clearing target)
+        if ((message.TargetType != TargetType.None && message.TargetId != 0) &&
+            client.Player.TickActions >= Models.Player.MaxTickActions)
+        {
+            _logger.LogInformation($"Player {client.Player.UserId} exceeded tick action limit ({client.Player.TickActions}/{Models.Player.MaxTickActions}) - ignoring set target");
+            return;
+        }
+
         // Prevent targeting while dead or awaiting respawn
         if (!client.Player.IsAlive || client.Player.IsAwaitingRespawn)
         {
@@ -40,13 +48,16 @@ public class SetTargetHandler : IMessageHandler<SetTargetMessage>
             return;
         }
 
-        // Clear target if requested
+        // Clear target if requested (doesn't count as action)
         if (message.TargetType == TargetType.None || message.TargetId == 0)
         {
             client.Player.SetTarget(null as ITargetable);
             _logger.LogInformation($"Player {client.Player.UserId} cleared target");
             return;
         }
+
+        // Increment action counter for setting a target
+        client.Player.TickActions++;
 
         ITargetable? target = null;
 

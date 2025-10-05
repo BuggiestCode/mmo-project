@@ -7,6 +7,7 @@ public class NPCDefinition
     public int HealthLevel { get; init; }
     public int AttackLevel { get; init; }
     public int DefenceLevel { get; init; }
+    public int StrengthLevel { get; init; }
     public int AttackSpeedTicks { get; init; }
     public bool IsAggressive { get; init; }
     public List<GameDataDrop> Drops { get; init; } = new();

@@ -38,6 +38,10 @@ public class Player : Character
     private int respawnTickCount = 4;
 
     public (float x, float y)? DeathLocation { get; set; }
+
+    // Rate limiting
+    public int TickActions { get; set; } = 0;
+    public const int MaxTickActions = 3;
     
     // Terrain/Visibility properties (moved from TerrainService dictionaries)
     public string? CurrentChunk { get; set; }
@@ -54,7 +58,11 @@ public class Player : Character
 
     public static int StartHealthLevel = 10;
 
-    public Player(int userId, int x = 0, int y = 0)
+    // Global spawn point coordinates
+    public const int SpawnX = 50;
+    public const int SpawnY = 23;
+
+    public Player(int userId, int x = SpawnX, int y = SpawnY)
     {
         UserId = userId;
         X = x;
@@ -106,7 +114,8 @@ public class Player : Character
             TookDamage = DamageTakenThisTick.Any(),
             IsAlive = IsAlive,  // Include death state for client animation
             TeleportMove = TeleportMove,  // Flag for instant position changes
-            Inventory = InventoryDirty ? Inventory : null  // Only send inventory when changed
+            Inventory = InventoryDirty ? Inventory : null,  // Only send inventory when changed
+            CurLevel = CalculateCombatLevel()  // Include combat level
         };
         
         // Clear teleport flag after including in snapshot
@@ -144,6 +153,13 @@ public class Player : Character
         IsDirty = true;
     }
 
+    // Override EndTick to reset rate limiting counter
+    public new void EndTick()
+    {
+        base.EndTick();
+        TickActions = 0;
+    }
+
     /// <summary>
     /// Gets all items that should be dropped on death and clears the inventory
     /// </summary>
@@ -177,21 +193,36 @@ public class Player : Character
     /// </summary>
     public void PerformRespawn()
     {
-        Console.WriteLine($"Player {UserId} respawning at (0,0) from death location ({DeathLocation?.x:F2}, {DeathLocation?.y:F2})");
-        
+        Console.WriteLine($"Player {UserId} respawning at ({SpawnX:F2}, {SpawnY:F2}) from death location ({DeathLocation?.x:F2}, {DeathLocation?.y:F2})");
+
         // Restore health to full
         RestoreHealth();
-        
-        // Teleport to spawn point (0,0)
-        UpdatePosition(0, 0, true);
-        
+
+        // Teleport to spawn point
+        UpdatePosition(SpawnX, SpawnY, true);
+
         // Clear death tracking
         RespawnTicksRemaining = 0;
         DeathLocation = null;
-        
+
         // Force dirty flag for immediate update
         IsDirty = true;
         
         Console.WriteLine($"Player {UserId} respawned with {CurrentHealth}/{MaxHealth} health at ({X:F2}, {Y:F2})");
+    }
+
+    /// <summary>
+    /// Calculates the player's combat level based on their attack, strength, defence, and health levels
+    /// </summary>
+    public int CalculateCombatLevel()
+    {
+        var attackLevel = Skills.GetValueOrDefault(SkillType.ATTACK)?.BaseLevel ?? 1;
+        var strengthLevel = Skills.GetValueOrDefault(SkillType.STRENGTH)?.BaseLevel ?? 1;
+        var defenceLevel = Skills.GetValueOrDefault(SkillType.DEFENCE)?.BaseLevel ?? 1;
+        var healthLevel = Skills.GetValueOrDefault(SkillType.HEALTH)?.BaseLevel ?? 10;
+
+        // Using Math.Ceiling to replicate Mathf.CeilToInt behavior
+        // Now dividing by 5.0 since we have 4 skills instead of 3
+        return (int)Math.Ceiling((attackLevel + strengthLevel + defenceLevel + healthLevel) / 5.0);
     }
 }

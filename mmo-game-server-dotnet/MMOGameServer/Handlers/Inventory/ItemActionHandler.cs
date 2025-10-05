@@ -34,20 +34,30 @@ public class ItemActionHandler : IMessageHandler<ItemActionMessage>
         {
             return;
         }
-        
+
+        // Check rate limit
+        if (client.Player.TickActions >= Models.Player.MaxTickActions)
+        {
+            _logger.LogInformation($"Player {client.Player.UserId} exceeded tick action limit ({client.Player.TickActions}/{Models.Player.MaxTickActions}) - ignoring item action");
+            return;
+        }
+
         // Validate slot index
         if (message.SlotIndex < 0 || message.SlotIndex >= Models.Player.PlayerInventorySize)
         {
             _logger.LogWarning($"Player {client.Player.UserId} attempted action {message.Action} on invalid slot {message.SlotIndex}");
             return;
         }
-        
+
         // Check if player is alive (can't perform actions when dead)
         if (!client.Player.IsAlive)
         {
             _logger.LogDebug($"Player {client.Player.UserId} attempted {message.Action} while dead");
             return;
         }
+
+        // Increment action counter
+        client.Player.TickActions++;
         
         // Get the item ID
         int itemId = client.Player.Inventory[message.SlotIndex];

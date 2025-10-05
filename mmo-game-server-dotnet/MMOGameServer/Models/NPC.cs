@@ -54,14 +54,15 @@ public class NPC : Character
         IsDirty = false;
 
         // Initialize skills based on NPC type
-        InitializeNPCSkills(npcDef.HealthLevel, npcDef.AttackLevel, npcDef.DefenceLevel);
+        InitializeNPCSkills(npcDef.HealthLevel, npcDef.AttackLevel, npcDef.DefenceLevel, npcDef.StrengthLevel);
     }
 
-    private void InitializeNPCSkills(int healthLVL, int attackLVL, int defenceLVL)
+    private void InitializeNPCSkills(int healthLVL, int attackLVL, int defenceLVL, int strengthLevel)
     {
         InitializeSkill(SkillType.HEALTH, healthLVL);
         InitializeSkill(SkillType.ATTACK, attackLVL);
         InitializeSkill(SkillType.DEFENCE, defenceLVL);
+        InitializeSkill(SkillType.STRENGTH, strengthLevel); // Default strength level 1 for NPCs
     }
 
     // Override SetTarget to reset roam timer when leaving combat

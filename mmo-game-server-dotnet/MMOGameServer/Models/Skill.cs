@@ -9,7 +9,8 @@ public enum SkillType
     // Combat skills
     HEALTH = 0,
     ATTACK = 1,
-    DEFENCE = 2
+    DEFENCE = 2,
+    STRENGTH = 3
 }
 
 /// <summary>

@@ -75,7 +75,8 @@ public class DatabaseService
             "skill_health_cur_level, skill_health_xp, " +
             "skill_attack_cur_level, skill_attack_xp, " +
             "skill_defence_cur_level, skill_defence_xp, " +
-            "inventory " +
+            "inventory, " +
+            "skill_strength_cur_level, skill_strength_xp " +
             "FROM players WHERE user_id = @userId", conn);
         selectCmd.Parameters.AddWithValue("userId", userId);
 
@@ -135,12 +136,13 @@ public class DatabaseService
         Console.WriteLine($"Created new player {userId} at spawn");
 
         // Character creator is not completed by default
-        Player newPlayer = new Player(userId, 0, 0);
+        Player newPlayer = new Player(userId, Player.SpawnX, Player.SpawnY);
         newPlayer.CharacterCreatorCompleted = false;
 
         newPlayer.InitializeSkillFromXP(SkillType.HEALTH, startHealthXP, Player.StartHealthLevel);
         newPlayer.InitializeSkillFromXP(SkillType.ATTACK, 0, 1);
         newPlayer.InitializeSkillFromXP(SkillType.DEFENCE, 0, 1);
+        newPlayer.InitializeSkillFromXP(SkillType.STRENGTH, 0, 1);
 
         return newPlayer;
     }
@@ -166,7 +168,12 @@ public class DatabaseService
         var defenceXP = reader.IsDBNull(17) ? 0 : reader.GetInt32(17);
         player.InitializeSkillFromXP(SkillType.DEFENCE, defenceXP, defenceCurLevel);
 
-        Console.WriteLine($"Loaded skills - Health: {healthCurLevel} (XP: {healthXP}), Attack: {attackCurLevel} (XP: {attackXP}), Defence: {defenceCurLevel} (XP: {defenceXP})");
+        // Load Strength skill (columns 19, 20 - after inventory column 18)
+        var strengthCurLevel = reader.IsDBNull(19) ? 1 : reader.GetInt16(19);
+        var strengthXP = reader.IsDBNull(20) ? 0 : reader.GetInt32(20);
+        player.InitializeSkillFromXP(SkillType.STRENGTH, strengthXP, strengthCurLevel);
+
+        Console.WriteLine($"Loaded skills - Health: {healthCurLevel} (XP: {healthXP}), Attack: {attackCurLevel} (XP: {attackXP}), Defence: {defenceCurLevel} (XP: {defenceXP}), Strength: {strengthCurLevel} (XP: {strengthXP})");
     }
 
     /// <summary>
@@ -506,6 +513,7 @@ public class DatabaseService
             var healthSkill = player.GetSkill(SkillType.HEALTH);
             var attackSkill = player.GetSkill(SkillType.ATTACK);
             var defenceSkill = player.GetSkill(SkillType.DEFENCE);
+            var strengthSkill = player.GetSkill(SkillType.STRENGTH);
 
             // For health: if player is awaiting respawn, save base health not current (which might be 0)
             var healthCurLevel = player.IsAwaitingRespawn && healthSkill != null ? healthSkill.BaseLevel : (healthSkill?.CurrentValue ?? 10);
@@ -519,6 +527,7 @@ public class DatabaseService
                 "skill_health_cur_level = @healthCurLevel, skill_health_xp = @healthXP, " +
                 "skill_attack_cur_level = @attackCurLevel, skill_attack_xp = @attackXP, " +
                 "skill_defence_cur_level = @defenceCurLevel, skill_defence_xp = @defenceXP, " +
+                "skill_strength_cur_level = @strengthCurLevel, skill_strength_xp = @strengthXP, " +
                 "inventory = @inventory::jsonb " +
                 "WHERE user_id = @userId", conn);
 
@@ -538,6 +547,10 @@ public class DatabaseService
             // Defence skill
             cmd.Parameters.AddWithValue("defenceCurLevel", (short)(defenceSkill?.CurrentValue ?? 1));
             cmd.Parameters.AddWithValue("defenceXP", defenceSkill?.CurrentXP ?? 0);
+
+            // Strength skill
+            cmd.Parameters.AddWithValue("strengthCurLevel", (short)(strengthSkill?.CurrentValue ?? 1));
+            cmd.Parameters.AddWithValue("strengthXP", strengthSkill?.CurrentXP ?? 0);
 
             // Inventory (as JSON string)
             cmd.Parameters.AddWithValue("inventory", inventoryJson);

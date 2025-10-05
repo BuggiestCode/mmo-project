@@ -12,11 +12,8 @@ const registrationLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    // Use x-forwarded-for header if behind a proxy, otherwise use IP
-    return req.headers["x-forwarded-for"]?.split(",")[0] || req.ip;
-  },
   skipSuccessfulRequests: false,
+  // Default keyGenerator handles IPv6 properly
 });
 
 // Basic rate limiter for login endpoint (to prevent brute force)
@@ -31,10 +28,8 @@ const loginRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    return req.headers["x-forwarded-for"]?.split(",")[0] || req.ip;
-  },
   skipSuccessfulRequests: false,
+  // Default keyGenerator handles IPv6 properly
 });
 
 // Account-specific login attempt tracking with database

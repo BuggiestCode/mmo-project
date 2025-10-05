@@ -226,10 +226,26 @@ public class CombatService
         {
             Player attackerAsPlayer = (Player)attacker;
 
-            if (attackerAsPlayer != null)
+            if (attackerAsPlayer != null && damage > 0)
             {
-                // Get Combat style bla bla
-                attacker.GetSkill(attackerAsPlayer.CurrentAttackStyle == Messages.Requests.AttackStyle.Aggressive ? SkillType.ATTACK : SkillType.DEFENCE)?.ModifyXP(damage * 2);
+                // Award XP based on attack style
+                // Aggressive: trains Attack
+                // Controlled: trains Strength only
+                // Defensive: trains Defence
+                switch (attackerAsPlayer.CurrentAttackStyle)
+                {
+                    case Messages.Requests.AttackStyle.Aggressive:
+                        attacker.GetSkill(SkillType.ATTACK)?.ModifyXP(damage * 4);
+                        break;
+                    case Messages.Requests.AttackStyle.Controlled:
+                        attacker.GetSkill(SkillType.STRENGTH)?.ModifyXP(damage * 4);
+                        break;
+                    case Messages.Requests.AttackStyle.Defensive:
+                        attacker.GetSkill(SkillType.DEFENCE)?.ModifyXP(damage * 4);
+                        break;
+                }
+
+                // Health XP is always awarded
                 attacker.GetSkill(SkillType.HEALTH)?.ModifyXP(damage);
             }
         }
@@ -285,25 +301,74 @@ public class CombatService
     
     /// <summary>
     /// Calculates damage from one character to another.
-    /// Can be expanded to include attack/strength/defence skills.
+    /// Attack vs Defence determines if hit lands, Strength determines damage range.
     /// </summary>
     private int CalculateDamage(Character attacker, Character target)
     {
         // Pull skills safely; default to 1 if missing
         var atkSkill = attacker.GetSkill(SkillType.ATTACK);
         var defSkill = target.GetSkill(SkillType.DEFENCE);
+        var strSkill = attacker.GetSkill(SkillType.STRENGTH);
 
         int atk = atkSkill?.CurrentValue ?? 1;
         int def = defSkill?.CurrentValue ?? 1;
+        int str = strSkill?.CurrentValue ?? 1;
 
-        // Simple opposing roll damage calc for now.
+        // Step 1: Determine if the attack hits
+        // Roll attack vs defence to determine hit/miss
         int attRoll = Rng.Next(0, atk + 1);
         int defRoll = Rng.Next(0, def + 1);
 
-        // Raw damage may exceed remaining health
-        int potentialDamageRaw = Math.Max(0, attRoll - defRoll);
+        // If defence roll is higher or equal, the attack misses
+        if (defRoll >= attRoll)
+        {
+            if(attacker.SelfTargetType == TargetType.Player)
+                _logger.LogInformation($"PLAYER Attack missed! AttRoll: {attRoll}/{atk} vs DefRoll: {defRoll}/{def}");
+            else
+                _logger.LogInformation($"NPC    Attack missed! AttRoll: {attRoll}/{atk} vs DefRoll: {defRoll}/{def}");
+
+            return 0; // Miss - no damage
+        }
+
+        // Step 2: Calculate damage based on Strength
+        // Max hit is based on strength level (will need to be refined with equipment bonuses later, just pass 0 for now)
+        int maxHit = CalculateMaxHit(str, 0);
+
+        // Roll for actual damage between 0 and max hit (if the Max calc == 1, we hit a 0, Rng.Next is upper exclusive)
+        int damage = Rng.Next(0, Math.Max(1, maxHit + 1));
+
+        if(attacker.SelfTargetType == TargetType.Player)
+            _logger.LogInformation($"PLAYER Attack hit! AttRoll: {attRoll}/{atk} vs DefRoll: {defRoll}/{def}, Damage: {damage}/{maxHit}");
+        else
+            _logger.LogInformation($"NPC    Attack hit! AttRoll: {attRoll}/{atk} vs DefRoll: {defRoll}/{def}, Damage: {damage}/{maxHit}");
 
         // Final damage is capped at the remaining health for the unit (per hit).
-        return Math.Min(potentialDamageRaw, target.CurrentHealth);
+            return Math.Min(damage, target.CurrentHealth);
+    }
+
+    /// <summary>
+    /// Calculates the maximum hit based on strength level and bonus.
+    /// Tunable parameters allow easy rebalance for progression and gear scaling.
+    /// 
+    /// THESE ARE CURRENTLY LOCALLY DEFINED "MAGIC NUMBERS" AND NEED TWEAKING.
+    /// 
+    /// </summary>
+    private int CalculateMaxHit(int strengthLevel, int strengthBonus)
+    {
+        // === Control parameters (tune these for balance) ===
+        const float Base = 1f;          // baseline floor
+        const float LevelWeight = 0.15f; // how much Strength level matters
+        const float BonusWeight = 0.7f;  // how much gear/buff matters
+        const float SynergyWeight = 0.005f; // amplifies gear*level relationship
+
+        // === Formula ===
+        float raw = Base
+            + LevelWeight * strengthLevel
+            + BonusWeight * strengthBonus
+            + SynergyWeight * strengthLevel * strengthBonus;
+
+        int maxHit = (int)Math.Floor(raw);
+
+        return maxHit;
     }
 }

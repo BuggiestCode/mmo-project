@@ -316,6 +316,42 @@ public class AuthHandler : IMessageHandler<AuthMessage>
     {
         if (client.Player == null) return;
 
+        // Check if player's current position has a valid chunk
+        var (chunkX, chunkY) = _terrain.WorldPositionToChunkCoord(client.Player.X, client.Player.Y);
+        var chunkKey = $"{chunkX},{chunkY}";
+
+        // Try to get the chunk - if it doesn't exist or can't be loaded, teleport to spawn
+        if (!_terrain.TryGetChunk(chunkKey, out _))
+        {
+            // Try to load the chunk
+            var chunkLoaded = false;
+            try
+            {
+                _terrain.EnsureChunksLoaded(new HashSet<string> { chunkKey });
+                chunkLoaded = _terrain.TryGetChunk(chunkKey, out _);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, $"Failed to load chunk {chunkKey} for player {client.Player.UserId}");
+            }
+
+            if (!chunkLoaded)
+            {
+                // Chunk doesn't exist or can't be loaded - teleport player to spawn
+                _logger.LogWarning($"Player {client.Player.UserId} at position ({client.Player.X}, {client.Player.Y}) is on invalid chunk {chunkKey}. Teleporting to spawn.");
+
+                // Set player to spawn position
+                client.Player.X = Models.Player.SpawnX;
+                client.Player.Y = Models.Player.SpawnY;
+                client.Player.Facing = 2; // Default facing direction (down)
+
+                // Save the new position to database
+                await _database.SavePlayerPositionAsync(client.Player.UserId, Models.Player.SpawnX, Models.Player.SpawnY, client.Player.Facing);
+
+                _logger.LogInformation($"Player {client.Player.UserId} teleported to spawn at ({Models.Player.SpawnX}, {Models.Player.SpawnY})");
+            }
+        }
+
         // Spawn player on chunk (redundant for soft reconnect but whatever)
         _terrain.UpdatePlayerChunk(client.Player, client.Player.X, client.Player.Y);
 

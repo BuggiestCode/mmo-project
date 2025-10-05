@@ -59,4 +59,8 @@ public class PlayerSnapshot
     // Ground items visible to this player
     [JsonPropertyName("groundItems")]
     public List<ChunkGroundItems>? GroundItems { get; set; }
+
+    // Combat level
+    [JsonPropertyName("curLevel")]
+    public int CurLevel { get; set; }
 }

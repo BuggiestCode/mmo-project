@@ -212,7 +212,8 @@ public class GameWorldService
             Health = client.Player.CurrentHealth,
             MaxHealth = client.Player.MaxHealth,
             TookDamage = client.Player.DamageTakenThisTick.Any(),
-            Inventory = client.Player.Inventory
+            Inventory = client.Player.Inventory,
+            CurLevel = client.Player.CalculateCombatLevel()
         };
     }
     
