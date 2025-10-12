@@ -9,6 +9,12 @@ public class Player : Character
     public override int Id => UserId;
     public override int X { get; set; }
     public override int Y { get; set; }
+
+    // Save position properties - return spawn point if dead/respawning
+    // This avoids the need to temporarily modify positions during save
+    public int SaveX => (!IsAlive || IsAwaitingRespawn) ? SpawnX : X;
+    public int SaveY => (!IsAlive || IsAwaitingRespawn) ? SpawnY : Y;
+
     public int Facing { get; set; }
     public override bool IsDirty { get; set; }
     public bool DoNetworkHeartbeat { get; set; }

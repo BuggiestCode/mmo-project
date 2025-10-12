@@ -286,30 +286,25 @@ public class AuthHandler : IMessageHandler<AuthMessage>
     private async Task HandleReconnection(ConnectedClient newClient, ConnectedClient existingClient, int userId)
     {
         _logger.LogInformation($"Reattached user {userId} to new socket");
-        
-        // Cancel the authentication timeout
+
+        // Cancel the authentication timeout on the new client
         newClient.AuthTimeoutCts?.Cancel();
-        
-        // Update existing client with new WebSocket
+
+        // CRITICAL: Transfer the WebSocket from newClient to existingClient
+        // We want to keep using existingClient which has all the player state
         existingClient.WebSocket = newClient.WebSocket;
         existingClient.DisconnectedAt = null;
         existingClient.LastActivity = DateTime.UtcNow;
-        
-        // Update session state
+
+        // Update session state to connected
         await _database.UpdateSessionStateAsync(userId, 0);
-        
-        // Copy existing player data to new client
-        newClient.Player = existingClient.Player;
-        newClient.Username = existingClient.Username;
-        newClient.IsAuthenticated = true;
-        newClient.DisconnectedAt = null;
-        newClient.LastActivity = DateTime.UtcNow;
-        
-        // Remove old client (preserve session)
-        await _gameWorld.RemoveClientAsync(existingClient.Id, removeSession: false);
-        
-        // Send spawn logic
-        await SpawnWorldPlayerAsync(newClient);
+
+        // Remove the new client from the game world since we're using the existing one
+        // This is important because newClient was added in WebSocketMiddleware
+        await _gameWorld.RemoveClientAsync(newClient.Id, removeSession: false);
+
+        // Send spawn logic using the existing client with its preserved player state
+        await SpawnWorldPlayerAsync(existingClient);
     }
     
     private async Task SpawnWorldPlayerAsync(ConnectedClient client)
@@ -377,7 +372,8 @@ public class AuthHandler : IMessageHandler<AuthMessage>
                 IsMale = client.Player.IsMale,
                 Health = client.Player.CurrentHealth,
                 MaxHealth = client.Player.MaxHealth,
-                Inventory = client.Player.Inventory
+                Inventory = client.Player.Inventory,
+                CurLevel = client.Player.CalculateCombatLevel()
             },
 
             playerSkills = skillSnapshots,

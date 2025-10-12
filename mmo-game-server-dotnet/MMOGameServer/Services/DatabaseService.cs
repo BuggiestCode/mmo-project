@@ -532,8 +532,8 @@ public class DatabaseService
                 "WHERE user_id = @userId", conn);
 
             cmd.Parameters.AddWithValue("userId", player.UserId);
-            cmd.Parameters.AddWithValue("x", player.X);
-            cmd.Parameters.AddWithValue("y", player.Y);
+            cmd.Parameters.AddWithValue("x", player.SaveX);
+            cmd.Parameters.AddWithValue("y", player.SaveY);
             cmd.Parameters.AddWithValue("facing", player.Facing);
 
             // Health skill
@@ -555,12 +555,23 @@ public class DatabaseService
             // Inventory (as JSON string)
             cmd.Parameters.AddWithValue("inventory", inventoryJson);
 
-            await cmd.ExecuteNonQueryAsync();
-            Console.WriteLine($"Saved complete player {player.UserId} state - Pos: ({player.X}, {player.Y}), Health: {healthCurLevel} ({healthSkill?.CurrentXP} XP), Inventory: {player.Inventory.Count(i => i != -1)} items");
+            var rowsAffected = await cmd.ExecuteNonQueryAsync();
+
+            if (rowsAffected == 0)
+            {
+                Console.WriteLine($"WARNING: No rows affected when saving player {player.UserId}! Player may not exist in database.");
+                // This could happen if the player was never created in the database properly
+                throw new InvalidOperationException($"Failed to save player {player.UserId} - no rows affected. Player may not exist in database.");
+            }
+
+            Console.WriteLine($"Saved complete player {player.UserId} state - Pos: ({player.SaveX}, {player.SaveY}), Health: {healthCurLevel} ({healthSkill?.CurrentXP} XP), Attack: {attackSkill?.CurrentXP} XP, Defence: {defenceSkill?.CurrentXP} XP, Strength: {strengthSkill?.CurrentXP} XP, Inventory: {player.Inventory.Count(i => i != -1)} items, Rows affected: {rowsAffected}");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to save player {player.UserId} to database: {ex.Message}");
+            Console.WriteLine($"ERROR: Failed to save player {player.UserId} to database: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            // Re-throw the exception so callers know the save failed
+            throw;
         }
     }
 
@@ -637,8 +648,9 @@ public class DatabaseService
             using var conn = new NpgsqlConnection(_authConnectionString);
             await conn.OpenAsync();
 
+            // Get ALL sessions for this world, including soft-disconnected players
             using var cmd = new NpgsqlCommand(
-                "SELECT user_id FROM active_sessions WHERE world = @world AND connection_state = 0", conn);
+                "SELECT user_id FROM active_sessions WHERE world = @world", conn);
             cmd.Parameters.AddWithValue("world", _worldName);
 
             using var reader = await cmd.ExecuteReaderAsync();
@@ -687,8 +699,10 @@ public class DatabaseService
             using var conn = new NpgsqlConnection(_authConnectionString);
             await conn.OpenAsync();
 
+            // Get ALL sessions for this world, regardless of connection state
+            // This includes both connected and soft-disconnected players
             using var cmd = new NpgsqlCommand(
-                "SELECT user_id, last_heartbeat FROM active_sessions WHERE world = @world AND connection_state = 0", conn);
+                "SELECT user_id, last_heartbeat FROM active_sessions WHERE world = @world", conn);
             cmd.Parameters.AddWithValue("world", _worldName);
 
             using var reader = await cmd.ExecuteReaderAsync();

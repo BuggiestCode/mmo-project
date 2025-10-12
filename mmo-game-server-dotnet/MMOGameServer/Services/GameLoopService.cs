@@ -492,10 +492,10 @@ public class GameLoopService : BackgroundService
                 }
                 
                 // Check for disconnect timeout (30 seconds)
-                if (client.DisconnectedAt.HasValue && 
+                if (client.DisconnectedAt.HasValue &&
                     (now - client.DisconnectedAt.Value).TotalMilliseconds > 30000)
                 {
-                    _logger.LogInformation("Cleaning up disconnected user {UserId}", client.Player?.UserId);
+                    _logger.LogInformation($"Disconnect timeout detected for user {client.Player?.UserId} - disconnected at {client.DisconnectedAt.Value}, now {now}, elapsed: {(now - client.DisconnectedAt.Value).TotalSeconds}s");
                     clientsToRemove.Add(client);
                 }
             }
@@ -516,13 +516,16 @@ public class GameLoopService : BackgroundService
     {
         if (client.Player != null)
         {
+            _logger.LogInformation($"OnDisconnectAsync called for player {client.Player.UserId} - Current Pos: ({client.Player.X}, {client.Player.Y})");
+
             // Store visibility chunks before removal (for zone cleanup)
             var playerVisibilityChunks = new HashSet<string>(client.Player.VisibilityChunks);
 
             // Remove from terrain tracking before logout
             _terrainService.RemovePlayer(client.Player);
 
-            // Use centralized force logout for timeouts
+            // Use centralized force logout for timeouts - IMPORTANT: savePlayer = true
+            _logger.LogInformation($"Calling ForceLogoutAsync for player {client.Player.UserId} with savePlayer=true");
             await _gameWorld.ForceLogoutAsync(client, "Timeout", true);
 
             // Trigger zone cleanup AFTER client is removed
@@ -533,6 +536,7 @@ public class GameLoopService : BackgroundService
         }
         else
         {
+            _logger.LogInformation($"OnDisconnectAsync called for client without player");
             // No player associated, just remove the client
             await _gameWorld.RemoveClientAsync(client.Id);
 

@@ -92,30 +92,22 @@ public class GameWorldService
 
         if (savePlayer)
         {
-            // Save player position - handle death state specially
-            int saveX = client.Player.X;
-            int saveY = client.Player.Y;
-
-            // If player is dead or awaiting respawn, save them at spawn point instead
-            if (!client.Player.IsAlive || client.Player.IsAwaitingRespawn)
+            try
             {
-                saveX = 0;
-                saveY = 0;
-                _logger.LogInformation($"Player {client.Player.UserId} logged out while dead/respawning, saving at spawn point (0,0) instead of death location ({client.Player.X:F2}, {client.Player.Y:F2})");
+                _logger.LogInformation($"Saving player {client.Player.UserId} state before logout - Pos: ({client.Player.X}, {client.Player.Y}), Health: {client.Player.CurrentHealth}/{client.Player.MaxHealth}");
+                // Use comprehensive save which handles respawn edge cases
+                await _databaseService.SavePlayerToDatabase(client.Player);
+                _logger.LogInformation($"Successfully saved player {client.Player.UserId} to database");
             }
-
-            // Temporarily update player position for save
-            var originalX = client.Player.X;
-            var originalY = client.Player.Y;
-            client.Player.X = saveX;
-            client.Player.Y = saveY;
-
-            // Use comprehensive save which handles respawn edge cases
-            await _databaseService.SavePlayerToDatabase(client.Player);
-
-            // Restore original position for cleanup
-            client.Player.X = originalX;
-            client.Player.Y = originalY;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"CRITICAL: Failed to save player {client.Player.UserId} during force logout!");
+                // Continue with logout even if save fails, but log the error prominently
+            }
+        }
+        else
+        {
+            _logger.LogWarning($"Skipping save for player {client.Player.UserId} (savePlayer=false)");
         }
 
         // Broadcast quit to other players
