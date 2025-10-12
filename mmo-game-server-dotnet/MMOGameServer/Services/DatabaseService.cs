@@ -410,8 +410,15 @@ public class DatabaseService
                 "DELETE FROM active_sessions WHERE user_id = @userId", conn);
             cmd.Parameters.AddWithValue("userId", userId);
 
-            await cmd.ExecuteNonQueryAsync();
-            Console.WriteLine($"Session removed for user {userId}");
+            var rowsAffected = await cmd.ExecuteNonQueryAsync();
+            if (rowsAffected > 0)
+            {
+                Console.WriteLine($"Session removed for user {userId} (rows affected: {rowsAffected})");
+            }
+            else
+            {
+                Console.WriteLine($"WARNING: No session found to remove for user {userId}");
+            }
         }
         catch (Exception ex)
         {

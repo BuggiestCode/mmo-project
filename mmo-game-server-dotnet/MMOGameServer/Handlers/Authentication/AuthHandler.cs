@@ -290,21 +290,28 @@ public class AuthHandler : IMessageHandler<AuthMessage>
         // Cancel the authentication timeout on the new client
         newClient.AuthTimeoutCts?.Cancel();
 
-        // CRITICAL: Transfer the WebSocket from newClient to existingClient
-        // We want to keep using existingClient which has all the player state
+        // Transfer the WebSocket to the existing client AND copy state to the new client
+        // The new client will be used going forward since it's what WebSocketMiddleware is using
         existingClient.WebSocket = newClient.WebSocket;
         existingClient.DisconnectedAt = null;
         existingClient.LastActivity = DateTime.UtcNow;
 
+        // Copy the player state from existing to new client
+        newClient.Player = existingClient.Player;
+        newClient.Username = existingClient.Username;
+        newClient.IsAuthenticated = true;
+        newClient.DisconnectedAt = null;
+        newClient.LastActivity = DateTime.UtcNow;
+
         // Update session state to connected
         await _database.UpdateSessionStateAsync(userId, 0);
 
-        // Remove the new client from the game world since we're using the existing one
-        // This is important because newClient was added in WebSocketMiddleware
-        await _gameWorld.RemoveClientAsync(newClient.Id, removeSession: false);
+        // Remove the OLD client from the game world and keep the new one
+        // This ensures WebSocketMiddleware can continue to use newClient
+        await _gameWorld.RemoveClientAsync(existingClient.Id, removeSession: false);
 
-        // Send spawn logic using the existing client with its preserved player state
-        await SpawnWorldPlayerAsync(existingClient);
+        // Send spawn logic using the new client
+        await SpawnWorldPlayerAsync(newClient);
     }
     
     private async Task SpawnWorldPlayerAsync(ConnectedClient client)
