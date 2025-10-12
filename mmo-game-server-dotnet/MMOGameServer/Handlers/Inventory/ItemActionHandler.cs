@@ -84,7 +84,7 @@ public class ItemActionHandler : IMessageHandler<ItemActionMessage>
 
         // Find the matching option for the requested action
         // Convert message action to GameData action type for comparison
-        var gameDataAction = (Models.GameData.ItemActionType)(int)message.Action;
+        var gameDataAction = (Messages.Contracts.ItemActionType)(int)message.Action;
         var option = itemDef.Options.FirstOrDefault(o => o.Action == gameDataAction);
         if (option == null)
         {

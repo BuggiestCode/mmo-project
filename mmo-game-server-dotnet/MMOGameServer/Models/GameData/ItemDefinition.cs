@@ -31,7 +31,7 @@ public class ItemOption
 {
     [JsonPropertyName("action")]
     [JsonConverter(typeof(JsonStringEnumConverter))]
-    public ItemActionType Action { get; set; }
+    public Messages.Contracts.ItemActionType Action { get; set; }
     
     [JsonPropertyName("effects")]
     public List<ItemEffect> Effects { get; set; } = new();
@@ -110,15 +110,6 @@ public class ItemEffect
     }
 }
 
-public enum ItemActionType
-{
-    Use = 1,
-    Eat = 2,
-    Drink = 3,
-    Equip = 4,
-    Drop = 5
-}
-
 public enum EffectType
 {
     Heal,
@@ -134,5 +125,6 @@ public enum EffectType
     GrantExperience,
     GrantItem,
     RemoveItem,
-    ConsumeItem
+    ConsumeItem,
+    EquipToSlot
 }

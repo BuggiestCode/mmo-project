@@ -92,6 +92,10 @@ public class ItemEffectProcessor
                 await ProcessConsumeItem(player, slotIndex);
                 break;
 
+            case EffectType.EquipToSlot:
+                await ProcessEquipToSlot(player, effect, slotIndex);
+                break;
+
             default:
                 _logger.LogWarning($"Unknown effect type: {effect.Type}");
                 break;
@@ -298,6 +302,105 @@ public class ItemEffectProcessor
 
         // Remove the consumed item from inventory
         _inventoryService.RemoveItemFromInventory(player, slotIndex);
+
+        await Task.CompletedTask;
+    }
+
+    private async Task ProcessEquipToSlot(Player player, ItemEffect effect, int slotIndex)
+    {
+        var equipmentSlot = effect.GetString("equipmentSlot", "");
+
+        if (string.IsNullOrEmpty(equipmentSlot))
+        {
+            _logger.LogWarning($"EQUIP TO SLOT EFFECT: No equipment slot specified for player {player.UserId}");
+            return;
+        }
+
+        _logger.LogInformation($"EQUIP TO SLOT EFFECT: Player {player.UserId} - Equipping item from slot {slotIndex} to {equipmentSlot}");
+
+        // Get the item ID from inventory
+        var itemId = player.Inventory[slotIndex];
+        if (itemId == -1)
+        {
+            _logger.LogWarning($"Cannot equip: No item in slot {slotIndex}");
+            return;
+        }
+
+        // Handle the equipment based on slot type
+        int previousItemId = 0;
+        bool slotValid = true;
+
+        switch (equipmentSlot.ToLower())
+        {
+            case "head":
+                previousItemId = player.HeadSlotEquipId;
+                player.HeadSlotEquipId = itemId;
+                break;
+            case "amulet":
+                previousItemId = player.AmuletSlotEquipId;
+                player.AmuletSlotEquipId = itemId;
+                break;
+            case "body":
+                previousItemId = player.BodySlotEquipId;
+                player.BodySlotEquipId = itemId;
+                break;
+            case "legs":
+                previousItemId = player.LegsSlotEquipId;
+                player.LegsSlotEquipId = itemId;
+                break;
+            case "boots":
+                previousItemId = player.BootsSlotEquipId;
+                player.BootsSlotEquipId = itemId;
+                break;
+            case "mainhand":
+                previousItemId = player.MainHandSlotEquipId;
+                player.MainHandSlotEquipId = itemId;
+                break;
+            case "offhand":
+                previousItemId = player.OffHandSlotEquipId;
+                player.OffHandSlotEquipId = itemId;
+                break;
+            case "ring":
+                previousItemId = player.RingSlotEquipId;
+                player.RingSlotEquipId = itemId;
+                break;
+            case "cape":
+                previousItemId = player.CapeSlotEquipId;
+                player.CapeSlotEquipId = itemId;
+                break;
+            default:
+                _logger.LogWarning($"Unknown equipment slot: {equipmentSlot}");
+                slotValid = false;
+                break;
+        }
+
+        if (!slotValid)
+        {
+            return;
+        }
+
+        // If there was a previous item in the slot, put it back in inventory
+        if (previousItemId > 0)
+        {
+            // Put the previous item in the slot we're taking the new item from
+            // This creates a direct swap
+            player.Inventory[slotIndex] = previousItemId;
+            player.InventoryDirty = true;
+            _logger.LogInformation($"Swapped: Previous item {previousItemId} moved to inventory slot {slotIndex}");
+        }
+        else
+        {
+            // No previous item, just clear the inventory slot
+            player.Inventory[slotIndex] = -1;
+            player.InventoryDirty = true;
+        }
+
+
+        // Mark equipment as dirty so it gets sent in state update
+        player.EquipmentDirty = true;
+        player.IsDirty = true;
+
+        _logger.LogInformation($"Successfully equipped item {itemId} to {equipmentSlot} slot and removed from inventory slot {slotIndex}");
 
         await Task.CompletedTask;
     }

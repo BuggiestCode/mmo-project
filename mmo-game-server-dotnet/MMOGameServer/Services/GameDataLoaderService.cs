@@ -357,7 +357,7 @@ public class GameDataLoaderService
     }
     
     // Item use handling
-    public List<ItemEffect> UseItem(int itemUid, ItemActionType actionType)
+    public List<ItemEffect> UseItem(int itemUid, Messages.Contracts.ItemActionType actionType)
     {
         var item = GetItem(itemUid);
         if (item == null) return new List<ItemEffect>();

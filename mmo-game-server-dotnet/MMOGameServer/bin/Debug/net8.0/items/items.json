@@ -39,10 +39,28 @@
           },
           {
             "type": "BuffStat",
+            "stat": "attack",
             "amount": 10,
-            "overTime": false,
-            "duration": 20,
-            "stat": "attack"
+            "duration": 20
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "uid": 2,
+    "stackSize": 1,
+    "value": 1,
+    "weight": 0.1,
+    "tradeable": true,
+    "droppable": true,
+    "options": [
+      {
+        "action": "Equip",
+        "effects": [
+          {
+            "type": "EquipToSlot",
+            "equipmentSlot": "head"
           }
         ]
       }
