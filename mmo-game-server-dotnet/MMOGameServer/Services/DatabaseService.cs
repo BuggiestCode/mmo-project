@@ -76,7 +76,10 @@ public class DatabaseService
             "skill_attack_cur_level, skill_attack_xp, " +
             "skill_defence_cur_level, skill_defence_xp, " +
             "inventory, " +
-            "skill_strength_cur_level, skill_strength_xp " +
+            "skill_strength_cur_level, skill_strength_xp, " +
+            "head_slot_equip_id, amulet_slot_equip_id, body_slot_equip_id, " +
+            "legs_slot_equip_id, boots_slot_equip_id, main_hand_slot_equip_id, " +
+            "off_hand_slot_equip_id, ring_slot_equip_id, cape_slot_equip_id " +
             "FROM players WHERE user_id = @userId", conn);
         selectCmd.Parameters.AddWithValue("userId", userId);
 
@@ -84,26 +87,38 @@ public class DatabaseService
         if (await reader.ReadAsync())
         {
             var player = new Player(
-                reader.GetInt32(0),  // user_id
-                reader.GetInt32(1),  // x
-                reader.GetInt32(2)  // y
+                reader.GetInt32(reader.GetOrdinal("user_id")),
+                reader.GetInt32(reader.GetOrdinal("x")),
+                reader.GetInt32(reader.GetOrdinal("y"))
             );
-            player.Facing = reader.GetInt32(3);
-            player.CharacterCreatorCompleted = reader.GetBoolean(4);
+            player.Facing = reader.GetInt32(reader.GetOrdinal("facing"));
+            player.CharacterCreatorCompleted = reader.GetBoolean(reader.GetOrdinal("character_creator_complete"));
+
             // Check for NULL values and use defaults if needed
-            player.HairColSwatchIndex = reader.IsDBNull(5) ? 0 : reader.GetInt32(5);
-            player.SkinColSwatchIndex = reader.IsDBNull(6) ? 0 : reader.GetInt32(6);
-            player.UnderColSwatchIndex = reader.IsDBNull(7) ? 0 : reader.GetInt32(7);
-            player.BootsColSwatchIndex = reader.IsDBNull(8) ? 0 : reader.GetInt32(8);
-            player.HairStyleIndex = reader.IsDBNull(9) ? 0 : reader.GetInt32(9);
-            player.FacialHairStyleIndex = reader.IsDBNull(10) ? 0 : reader.GetInt32(10);
-            player.IsMale = reader.IsDBNull(11) ? true : reader.GetBoolean(11);
+            var hairColIdx = reader.GetOrdinal("hair_swatch_col_index");
+            var skinColIdx = reader.GetOrdinal("skin_swatch_col_index");
+            var underColIdx = reader.GetOrdinal("under_swatch_col_index");
+            var bootsColIdx = reader.GetOrdinal("boots_swatch_col_index");
+            var hairStyleIdx = reader.GetOrdinal("hair_style_index");
+            var facialHairIdx = reader.GetOrdinal("facial_hair_style_index");
+            var isMaleIdx = reader.GetOrdinal("is_male");
+
+            player.HairColSwatchIndex = reader.IsDBNull(hairColIdx) ? 0 : reader.GetInt32(hairColIdx);
+            player.SkinColSwatchIndex = reader.IsDBNull(skinColIdx) ? 0 : reader.GetInt32(skinColIdx);
+            player.UnderColSwatchIndex = reader.IsDBNull(underColIdx) ? 0 : reader.GetInt32(underColIdx);
+            player.BootsColSwatchIndex = reader.IsDBNull(bootsColIdx) ? 0 : reader.GetInt32(bootsColIdx);
+            player.HairStyleIndex = reader.IsDBNull(hairStyleIdx) ? 0 : reader.GetInt32(hairStyleIdx);
+            player.FacialHairStyleIndex = reader.IsDBNull(facialHairIdx) ? 0 : reader.GetInt32(facialHairIdx);
+            player.IsMale = reader.IsDBNull(isMaleIdx) ? true : reader.GetBoolean(isMaleIdx);
 
             // Load skill data from database
             LoadPlayerSkillsFromReader(player, reader);
 
-            // Load inventory from database (column 18)
-            LoadPlayerInventoryFromReader(player, reader, 18);
+            // Load inventory from database
+            LoadPlayerInventoryFromReader(player, reader);
+
+            // Load equipment from database
+            LoadPlayerEquipmentFromReader(player, reader);
 
             Console.WriteLine($"Loaded existing player {userId} at ({player.X}, {player.Y}) with look: hair={player.HairColSwatchIndex}, skin={player.SkinColSwatchIndex}, under={player.UnderColSwatchIndex}, boots={player.BootsColSwatchIndex}, style={player.HairStyleIndex}, facialHair={player.FacialHairStyleIndex}, isMale={player.IsMale}");
             return player;
@@ -149,28 +164,35 @@ public class DatabaseService
 
     /// <summary>
     /// Loads player skills from database reader (assumes reader is at the correct row)
-    /// Reader columns must be in order: ..., skill_health_cur_level, skill_health_xp, skill_attack_cur_level, skill_attack_xp, skill_defence_cur_level, skill_defence_xp
     /// </summary>
     private void LoadPlayerSkillsFromReader(Player player, NpgsqlDataReader reader)
     {
-        // Load Health skill (columns 12, 13)
-        var healthCurLevel = reader.IsDBNull(12) ? 10 : reader.GetInt16(12);
-        var healthXP = reader.IsDBNull(13) ? Skill.GetXPForLevel(Player.StartHealthLevel) : reader.GetInt32(13);
+        // Load Health skill
+        var healthLevelIdx = reader.GetOrdinal("skill_health_cur_level");
+        var healthXpIdx = reader.GetOrdinal("skill_health_xp");
+        var healthCurLevel = reader.IsDBNull(healthLevelIdx) ? 10 : reader.GetInt16(healthLevelIdx);
+        var healthXP = reader.IsDBNull(healthXpIdx) ? Skill.GetXPForLevel(Player.StartHealthLevel) : reader.GetInt32(healthXpIdx);
         player.InitializeSkillFromXP(SkillType.HEALTH, healthXP, healthCurLevel);
 
-        // Load Attack skill (columns 14, 15)
-        var attackCurLevel = reader.IsDBNull(14) ? 1 : reader.GetInt16(14);
-        var attackXP = reader.IsDBNull(15) ? 0 : reader.GetInt32(15);
+        // Load Attack skill
+        var attackLevelIdx = reader.GetOrdinal("skill_attack_cur_level");
+        var attackXpIdx = reader.GetOrdinal("skill_attack_xp");
+        var attackCurLevel = reader.IsDBNull(attackLevelIdx) ? 1 : reader.GetInt16(attackLevelIdx);
+        var attackXP = reader.IsDBNull(attackXpIdx) ? 0 : reader.GetInt32(attackXpIdx);
         player.InitializeSkillFromXP(SkillType.ATTACK, attackXP, attackCurLevel);
 
-        // Load Defence skill (columns 16, 17)
-        var defenceCurLevel = reader.IsDBNull(16) ? 1 : reader.GetInt16(16);
-        var defenceXP = reader.IsDBNull(17) ? 0 : reader.GetInt32(17);
+        // Load Defence skill
+        var defenceLevelIdx = reader.GetOrdinal("skill_defence_cur_level");
+        var defenceXpIdx = reader.GetOrdinal("skill_defence_xp");
+        var defenceCurLevel = reader.IsDBNull(defenceLevelIdx) ? 1 : reader.GetInt16(defenceLevelIdx);
+        var defenceXP = reader.IsDBNull(defenceXpIdx) ? 0 : reader.GetInt32(defenceXpIdx);
         player.InitializeSkillFromXP(SkillType.DEFENCE, defenceXP, defenceCurLevel);
 
-        // Load Strength skill (columns 19, 20 - after inventory column 18)
-        var strengthCurLevel = reader.IsDBNull(19) ? 1 : reader.GetInt16(19);
-        var strengthXP = reader.IsDBNull(20) ? 0 : reader.GetInt32(20);
+        // Load Strength skill
+        var strengthLevelIdx = reader.GetOrdinal("skill_strength_cur_level");
+        var strengthXpIdx = reader.GetOrdinal("skill_strength_xp");
+        var strengthCurLevel = reader.IsDBNull(strengthLevelIdx) ? 1 : reader.GetInt16(strengthLevelIdx);
+        var strengthXP = reader.IsDBNull(strengthXpIdx) ? 0 : reader.GetInt32(strengthXpIdx);
         player.InitializeSkillFromXP(SkillType.STRENGTH, strengthXP, strengthCurLevel);
 
         Console.WriteLine($"Loaded skills - Health: {healthCurLevel} (XP: {healthXP}), Attack: {attackCurLevel} (XP: {attackXP}), Defence: {defenceCurLevel} (XP: {defenceXP}), Strength: {strengthCurLevel} (XP: {strengthXP})");
@@ -180,11 +202,12 @@ public class DatabaseService
     /// Loads player inventory from database reader
     /// Deserializes JSONB array into C# int array
     /// </summary>
-    private void LoadPlayerInventoryFromReader(Player player, NpgsqlDataReader reader, int columnIndex)
+    private void LoadPlayerInventoryFromReader(Player player, NpgsqlDataReader reader)
     {
         player.Inventory = new int[Player.PlayerInventorySize];
+        var inventoryIdx = reader.GetOrdinal("inventory");
 
-        if (reader.IsDBNull(columnIndex))
+        if (reader.IsDBNull(inventoryIdx))
         {
             // No inventory in database, initialize empty
             for (int i = 0; i < Player.PlayerInventorySize; i++)
@@ -197,7 +220,7 @@ public class DatabaseService
             try
             {
                 // Read as JSON string from JSONB column
-                var inventoryJson = reader.GetString(columnIndex);
+                var inventoryJson = reader.GetString(inventoryIdx);
 
                 // Deserialize JSON array directly to int array
                 // Format: [1, 2, null, 3, null, ...] where null = empty slot (-1)
@@ -237,6 +260,48 @@ public class DatabaseService
         }
 
         Console.WriteLine($"Loaded inventory with {player.Inventory.Count(i => i != -1)} items");
+    }
+
+    /// <summary>
+    /// Loads player equipment from database reader
+    /// </summary>
+    private void LoadPlayerEquipmentFromReader(Player player, NpgsqlDataReader reader)
+    {
+        // Get column indices for equipment slots
+        var headIdx = reader.GetOrdinal("head_slot_equip_id");
+        var amuletIdx = reader.GetOrdinal("amulet_slot_equip_id");
+        var bodyIdx = reader.GetOrdinal("body_slot_equip_id");
+        var legsIdx = reader.GetOrdinal("legs_slot_equip_id");
+        var bootsIdx = reader.GetOrdinal("boots_slot_equip_id");
+        var mainHandIdx = reader.GetOrdinal("main_hand_slot_equip_id");
+        var offHandIdx = reader.GetOrdinal("off_hand_slot_equip_id");
+        var ringIdx = reader.GetOrdinal("ring_slot_equip_id");
+        var capeIdx = reader.GetOrdinal("cape_slot_equip_id");
+
+        // Load equipment IDs (default to 0 if NULL)
+        player.HeadSlotEquipId = reader.IsDBNull(headIdx) ? 0 : reader.GetInt32(headIdx);
+        player.AmuletSlotEquipId = reader.IsDBNull(amuletIdx) ? 0 : reader.GetInt32(amuletIdx);
+        player.BodySlotEquipId = reader.IsDBNull(bodyIdx) ? 0 : reader.GetInt32(bodyIdx);
+        player.LegsSlotEquipId = reader.IsDBNull(legsIdx) ? 0 : reader.GetInt32(legsIdx);
+        player.BootsSlotEquipId = reader.IsDBNull(bootsIdx) ? 0 : reader.GetInt32(bootsIdx);
+        player.MainHandSlotEquipId = reader.IsDBNull(mainHandIdx) ? 0 : reader.GetInt32(mainHandIdx);
+        player.OffHandSlotEquipId = reader.IsDBNull(offHandIdx) ? 0 : reader.GetInt32(offHandIdx);
+        player.RingSlotEquipId = reader.IsDBNull(ringIdx) ? 0 : reader.GetInt32(ringIdx);
+        player.CapeSlotEquipId = reader.IsDBNull(capeIdx) ? 0 : reader.GetInt32(capeIdx);
+
+        // Log equipped items (non-zero values)
+        var equippedCount = 0;
+        if (player.HeadSlotEquipId > 0) equippedCount++;
+        if (player.AmuletSlotEquipId > 0) equippedCount++;
+        if (player.BodySlotEquipId > 0) equippedCount++;
+        if (player.LegsSlotEquipId > 0) equippedCount++;
+        if (player.BootsSlotEquipId > 0) equippedCount++;
+        if (player.MainHandSlotEquipId > 0) equippedCount++;
+        if (player.OffHandSlotEquipId > 0) equippedCount++;
+        if (player.RingSlotEquipId > 0) equippedCount++;
+        if (player.CapeSlotEquipId > 0) equippedCount++;
+
+        Console.WriteLine($"Loaded equipment with {equippedCount} equipped items");
     }
 
 
@@ -535,7 +600,12 @@ public class DatabaseService
                 "skill_attack_cur_level = @attackCurLevel, skill_attack_xp = @attackXP, " +
                 "skill_defence_cur_level = @defenceCurLevel, skill_defence_xp = @defenceXP, " +
                 "skill_strength_cur_level = @strengthCurLevel, skill_strength_xp = @strengthXP, " +
-                "inventory = @inventory::jsonb " +
+                "inventory = @inventory::jsonb, " +
+                "head_slot_equip_id = @headSlot, amulet_slot_equip_id = @amuletSlot, " +
+                "body_slot_equip_id = @bodySlot, legs_slot_equip_id = @legsSlot, " +
+                "boots_slot_equip_id = @bootsSlot, main_hand_slot_equip_id = @mainHandSlot, " +
+                "off_hand_slot_equip_id = @offHandSlot, ring_slot_equip_id = @ringSlot, " +
+                "cape_slot_equip_id = @capeSlot " +
                 "WHERE user_id = @userId", conn);
 
             cmd.Parameters.AddWithValue("userId", player.UserId);
@@ -561,6 +631,17 @@ public class DatabaseService
 
             // Inventory (as JSON string)
             cmd.Parameters.AddWithValue("inventory", inventoryJson);
+
+            // Equipment slots
+            cmd.Parameters.AddWithValue("headSlot", player.HeadSlotEquipId);
+            cmd.Parameters.AddWithValue("amuletSlot", player.AmuletSlotEquipId);
+            cmd.Parameters.AddWithValue("bodySlot", player.BodySlotEquipId);
+            cmd.Parameters.AddWithValue("legsSlot", player.LegsSlotEquipId);
+            cmd.Parameters.AddWithValue("bootsSlot", player.BootsSlotEquipId);
+            cmd.Parameters.AddWithValue("mainHandSlot", player.MainHandSlotEquipId);
+            cmd.Parameters.AddWithValue("offHandSlot", player.OffHandSlotEquipId);
+            cmd.Parameters.AddWithValue("ringSlot", player.RingSlotEquipId);
+            cmd.Parameters.AddWithValue("capeSlot", player.CapeSlotEquipId);
 
             var rowsAffected = await cmd.ExecuteNonQueryAsync();
 

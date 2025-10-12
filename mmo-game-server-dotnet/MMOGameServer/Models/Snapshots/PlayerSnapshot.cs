@@ -55,7 +55,11 @@ public class PlayerSnapshot
     // Inventory (only sent when changed)
     [JsonPropertyName("inventory")]
     public int[]? Inventory { get; set; }
-    
+
+    // Equipment (only sent when changed)
+    [JsonPropertyName("equipment")]
+    public EquipmentSnapshot? Equipment { get; set; }
+
     // Ground items visible to this player
     [JsonPropertyName("groundItems")]
     public List<ChunkGroundItems>? GroundItems { get; set; }

@@ -205,6 +205,18 @@ public class GameWorldService
             MaxHealth = client.Player.MaxHealth,
             TookDamage = client.Player.DamageTakenThisTick.Any(),
             Inventory = client.Player.Inventory,
+            Equipment = new EquipmentSnapshot
+            {
+                HeadSlot = client.Player.HeadSlotEquipId,
+                AmuletSlot = client.Player.AmuletSlotEquipId,
+                BodySlot = client.Player.BodySlotEquipId,
+                LegsSlot = client.Player.LegsSlotEquipId,
+                BootsSlot = client.Player.BootsSlotEquipId,
+                MainHandSlot = client.Player.MainHandSlotEquipId,
+                OffHandSlot = client.Player.OffHandSlotEquipId,
+                RingSlot = client.Player.RingSlotEquipId,
+                CapeSlot = client.Player.CapeSlotEquipId
+            },
             CurLevel = client.Player.CalculateCombatLevel()
         };
     }

@@ -62,6 +62,18 @@ public class Player : Character
     public bool InventoryDirty { get; set; } // Track when inventory changes
     public int ActiveUseItemSlot { get; set; } = -1; // Currently selected item for use action
 
+    // Equipment System - IDs of items in equipment slots (0 = no item equipped)
+    public int HeadSlotEquipId { get; set; } = 0;
+    public int AmuletSlotEquipId { get; set; } = 0;
+    public int BodySlotEquipId { get; set; } = 0;
+    public int LegsSlotEquipId { get; set; } = 0;
+    public int BootsSlotEquipId { get; set; } = 0;
+    public int MainHandSlotEquipId { get; set; } = 0;
+    public int OffHandSlotEquipId { get; set; } = 0;
+    public int RingSlotEquipId { get; set; } = 0;
+    public int CapeSlotEquipId { get; set; } = 0;
+    public bool EquipmentDirty { get; set; } // Track when equipment changes
+
     public static int StartHealthLevel = 10;
 
     // Global spawn point coordinates
@@ -121,19 +133,26 @@ public class Player : Character
             IsAlive = IsAlive,  // Include death state for client animation
             TeleportMove = TeleportMove,  // Flag for instant position changes
             Inventory = InventoryDirty ? Inventory : null,  // Only send inventory when changed
+            Equipment = EquipmentDirty ? GetEquipmentSnapshot() : null,  // Only send equipment when changed
             CurLevel = CalculateCombatLevel()  // Include combat level
         };
-        
+
         // Clear teleport flag after including in snapshot
         if (TeleportMove)
         {
             TeleportMove = false;
         }
-        
+
         // Clear inventory dirty flag after including in snapshot
         if (InventoryDirty)
         {
             InventoryDirty = false;
+        }
+
+        // Clear equipment dirty flag after including in snapshot
+        if (EquipmentDirty)
+        {
+            EquipmentDirty = false;
         }
 
         return snapshot;
@@ -230,5 +249,24 @@ public class Player : Character
         // Using Math.Ceiling to replicate Mathf.CeilToInt behavior
         // Now dividing by 5.0 since we have 4 skills instead of 3
         return (int)Math.Ceiling((attackLevel + strengthLevel + defenceLevel + healthLevel) / 5.0);
+    }
+
+    /// <summary>
+    /// Gets the current equipment snapshot for serialization
+    /// </summary>
+    private EquipmentSnapshot GetEquipmentSnapshot()
+    {
+        return new EquipmentSnapshot
+        {
+            HeadSlot = HeadSlotEquipId,
+            AmuletSlot = AmuletSlotEquipId,
+            BodySlot = BodySlotEquipId,
+            LegsSlot = LegsSlotEquipId,
+            BootsSlot = BootsSlotEquipId,
+            MainHandSlot = MainHandSlotEquipId,
+            OffHandSlot = OffHandSlotEquipId,
+            RingSlot = RingSlotEquipId,
+            CapeSlot = CapeSlotEquipId
+        };
     }
 }
