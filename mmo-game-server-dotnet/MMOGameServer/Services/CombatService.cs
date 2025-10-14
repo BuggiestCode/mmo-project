@@ -331,14 +331,20 @@ public class CombatService
         }
 
         // Step 2: Calculate damage based on Strength
-        // Max hit is based on strength level (will need to be refined with equipment bonuses later, just pass 0 for now)
-        int maxHit = CalculateMaxHit(str, 0);
+        // Get equipment strength bonus if attacker is a Player
+        int strengthBonus = 0;
+        if (attacker is Player playerAttacker)
+        {
+            strengthBonus = playerAttacker.EquipmentStrengthBonus;
+        }
+
+        int maxHit = CalculateMaxHit(str, strengthBonus);
 
         // Roll for actual damage between 0 and max hit (if the Max calc == 1, we hit a 0, Rng.Next is upper exclusive)
         int damage = Rng.Next(0, Math.Max(1, maxHit + 1));
 
         if(attacker.SelfTargetType == TargetType.Player)
-            _logger.LogInformation($"PLAYER Attack hit! AttRoll: {attRoll}/{atk} vs DefRoll: {defRoll}/{def}, Damage: {damage}/{maxHit}");
+            _logger.LogInformation($"PLAYER Attack hit! AttRoll: {attRoll}/{atk} vs DefRoll: {defRoll}/{def}, Damage: {damage}/{maxHit} (StrBonus: {strengthBonus})");
         else
             _logger.LogInformation($"NPC    Attack hit! AttRoll: {attRoll}/{atk} vs DefRoll: {defRoll}/{def}, Damage: {damage}/{maxHit}");
 

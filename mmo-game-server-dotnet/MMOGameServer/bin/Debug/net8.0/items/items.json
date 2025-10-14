@@ -60,7 +60,62 @@
         "effects": [
           {
             "type": "EquipToSlot",
-            "equipmentSlot": "head"
+            "equipmentSlot": "head",
+            "equipmentBonuses": [
+              {
+                "statName": "Strength",
+                "bonus": 10
+              },
+              {
+                "statName": "Defence",
+                "bonus": 5
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "uid": 3,
+    "stackSize": 1,
+    "value": 1,
+    "weight": 0.1,
+    "tradeable": true,
+    "droppable": true,
+    "options": [
+      {
+        "action": "Equip",
+        "effects": [
+          {
+            "type": "EquipToSlot",
+            "equipmentSlot": "head",
+            "equipmentBonuses": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "uid": 4,
+    "stackSize": 1,
+    "value": 1,
+    "weight": 0.1,
+    "tradeable": true,
+    "droppable": true,
+    "options": [
+      {
+        "action": "Equip",
+        "effects": [
+          {
+            "type": "EquipToSlot",
+            "equipmentSlot": "ring",
+            "equipmentBonuses": [
+              {
+                "statName": "Strength",
+                "bonus": 500
+              }
+            ]
           }
         ]
       }

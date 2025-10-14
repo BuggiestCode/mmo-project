@@ -10,13 +10,16 @@ public class ItemEffectProcessor
 {
     private readonly ILogger<ItemEffectProcessor> _logger;
     private readonly InventoryService _inventoryService;
+    private readonly EquipmentBonusService _equipmentBonusService;
 
     public ItemEffectProcessor(
         ILogger<ItemEffectProcessor> logger,
-        InventoryService inventoryService)
+        InventoryService inventoryService,
+        EquipmentBonusService equipmentBonusService)
     {
         _logger = logger;
         _inventoryService = inventoryService;
+        _equipmentBonusService = equipmentBonusService;
     }
 
     /// <summary>
@@ -380,7 +383,7 @@ public class ItemEffectProcessor
         }
 
         // If there was a previous item in the slot, put it back in inventory
-        if (previousItemId > 0)
+        if (previousItemId >= 0)
         {
             // Put the previous item in the slot we're taking the new item from
             // This creates a direct swap
@@ -399,6 +402,9 @@ public class ItemEffectProcessor
         // Mark equipment as dirty so it gets sent in state update
         player.EquipmentDirty = true;
         player.IsDirty = true;
+
+        // Recalculate equipment bonuses after equipping
+        _equipmentBonusService.RecalculateEquipmentBonuses(player);
 
         _logger.LogInformation($"Successfully equipped item {itemId} to {equipmentSlot} slot and removed from inventory slot {slotIndex}");
 

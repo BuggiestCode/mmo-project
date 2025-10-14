@@ -13,18 +13,20 @@ public class AdminCommandHandler : IMessageHandler<AdminCommandMessage>
     private readonly DatabaseService _databaseService;
     private readonly InventoryService _inventoryService;
     private readonly PlayerService _playerService;
+    private readonly GameDataLoaderService _gameDataLoader;
     private readonly ILogger<AdminCommandHandler> _logger;
 
     // Cache for undo teleport functionality
     private readonly Dictionary<int, (int x, int y)> _lastTeleportPositions = new();
 
-    public AdminCommandHandler(GameWorldService gameWorld, TerrainService terrainService, DatabaseService databaseService, InventoryService inventoryService, PlayerService playerService, ILogger<AdminCommandHandler> logger)
+    public AdminCommandHandler(GameWorldService gameWorld, TerrainService terrainService, DatabaseService databaseService, InventoryService inventoryService, PlayerService playerService, GameDataLoaderService gameDataLoader, ILogger<AdminCommandHandler> logger)
     {
         _gameWorld = gameWorld;
         _terrainService = terrainService;
         _databaseService = databaseService;
         _inventoryService = inventoryService;
         _playerService = playerService;
+        _gameDataLoader = gameDataLoader;
         _logger = logger;
     }
     
@@ -239,6 +241,14 @@ public class AdminCommandHandler : IMessageHandler<AdminCommandMessage>
         if (!int.TryParse(args[1], out var itemId))
         {
             Console.WriteLine("Invalid item ID");
+            return;
+        }
+
+        // Validate that the item exists in items.json
+        var itemDefinition = _gameDataLoader.GetItem(itemId);
+        if (itemDefinition == null)
+        {
+            Console.WriteLine($"Item ID {itemId} does not exist in items.json");
             return;
         }
 

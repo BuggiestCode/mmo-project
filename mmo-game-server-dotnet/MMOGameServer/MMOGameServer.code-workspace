@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+        "workbench.colorCustomizations": {
+            "activityBar.background": "#453980", // Example: Dark grey for activity bar
+            "statusBar.background": "#453980",   // Example: Dark blue for status bar
+            "titleBar.activeBackground": "#453980" // Example: Dark blue for active title bar
+        }
+    }
+}

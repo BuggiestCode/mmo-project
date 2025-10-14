@@ -17,5 +17,6 @@ public enum MessageType
     SkillUpdate,
     SetAttackStyle,
     ItemAction,
-    PickUp
+    PickUp,
+    UnequipItem
 }

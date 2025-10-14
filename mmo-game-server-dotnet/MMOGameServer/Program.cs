@@ -27,6 +27,7 @@ builder.Services.AddSingleton<NPCService>();
 builder.Services.AddSingleton<PlayerService>();
 builder.Services.AddSingleton<InventoryService>();
 builder.Services.AddSingleton<ItemEffectProcessor>();
+builder.Services.AddSingleton<EquipmentBonusService>();
 
 // Register message processing services
 builder.Services.AddSingleton<MessageRouter>();
@@ -45,6 +46,7 @@ builder.Services.AddScoped<IMessageHandler<SaveCharacterLookAttributesMessage>, 
 builder.Services.AddScoped<IMessageHandler<SetTargetMessage>, SetTargetHandler>();
 builder.Services.AddScoped<IMessageHandler<SetAttackStyleMessage>, SetAttackStyleHandler>();
 builder.Services.AddScoped<IMessageHandler<ItemActionMessage>, ItemActionHandler>();
+builder.Services.AddScoped<IMessageHandler<UnequipItemMessage>, UnequipItemHandler>();
 
 // Communication handlers
 builder.Services.AddScoped<IMessageHandler<ChatMessage>, ChatHandler>();

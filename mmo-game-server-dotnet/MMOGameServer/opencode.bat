@@ -1,1 +1,1 @@
-code .
+code MMOGameServer.code-workspace

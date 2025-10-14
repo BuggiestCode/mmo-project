@@ -62,17 +62,24 @@ public class Player : Character
     public bool InventoryDirty { get; set; } // Track when inventory changes
     public int ActiveUseItemSlot { get; set; } = -1; // Currently selected item for use action
 
-    // Equipment System - IDs of items in equipment slots (0 = no item equipped)
-    public int HeadSlotEquipId { get; set; } = 0;
-    public int AmuletSlotEquipId { get; set; } = 0;
-    public int BodySlotEquipId { get; set; } = 0;
-    public int LegsSlotEquipId { get; set; } = 0;
-    public int BootsSlotEquipId { get; set; } = 0;
-    public int MainHandSlotEquipId { get; set; } = 0;
-    public int OffHandSlotEquipId { get; set; } = 0;
-    public int RingSlotEquipId { get; set; } = 0;
-    public int CapeSlotEquipId { get; set; } = 0;
+    // Equipment System - IDs of items in equipment slots (-1 = no item equipped)
+    public int HeadSlotEquipId { get; set; } = -1;
+    public int AmuletSlotEquipId { get; set; } = -1;
+    public int BodySlotEquipId { get; set; } = -1;
+    public int LegsSlotEquipId { get; set; } = -1;
+    public int BootsSlotEquipId { get; set; } = -1;
+    public int MainHandSlotEquipId { get; set; } = -1;
+    public int OffHandSlotEquipId { get; set; } = -1;
+    public int RingSlotEquipId { get; set; } = -1;
+    public int CapeSlotEquipId { get; set; } = -1;
     public bool EquipmentDirty { get; set; } // Track when equipment changes
+
+    // Equipment Bonuses - Cached totals from all equipped items
+    public int EquipmentStrengthBonus { get; set; } = 0;
+    public int EquipmentAttackBonus { get; set; } = 0;
+    public int EquipmentDefenceBonus { get; set; } = 0;
+    public int EquipmentMagicBonus { get; set; } = 0;
+    public int EquipmentRangedBonus { get; set; } = 0;
 
     public static int StartHealthLevel = 10;
 

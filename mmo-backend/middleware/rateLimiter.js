@@ -1,6 +1,7 @@
 const rateLimit = require("express-rate-limit");
 
 // IP-based registration limiter: 5 registrations per IP per hour
+// Note: 'admin' username bypasses this (for dev/testing purposes)
 const registrationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 5, // 5 registrations per hour per IP
@@ -13,10 +14,19 @@ const registrationLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: false,
+  // Skip rate limiting for admin username
+  skip: async (req, res) => {
+    // Allow unlimited registrations for admin (dev/testing)
+    if (req.body.username === 'admin') {
+      return true;
+    }
+    return false;
+  },
   // Default keyGenerator handles IPv6 properly
 });
 
 // Basic rate limiter for login endpoint (to prevent brute force)
+// Note: Admin accounts bypass this via skip function
 const loginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // 10 attempts per 15 minutes per IP
@@ -29,6 +39,14 @@ const loginRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: false,
+  // Skip rate limiting for admin accounts
+  skip: async (req, res) => {
+    // Check if username is 'admin' or if user is in adminwhitelist
+    if (req.body.username === 'admin') {
+      return true; // Skip rate limiting for admin account
+    }
+    return false;
+  },
   // Default keyGenerator handles IPv6 properly
 });
 

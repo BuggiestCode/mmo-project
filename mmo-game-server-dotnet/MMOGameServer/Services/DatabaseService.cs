@@ -278,28 +278,28 @@ public class DatabaseService
         var ringIdx = reader.GetOrdinal("ring_slot_equip_id");
         var capeIdx = reader.GetOrdinal("cape_slot_equip_id");
 
-        // Load equipment IDs (default to 0 if NULL)
-        player.HeadSlotEquipId = reader.IsDBNull(headIdx) ? 0 : reader.GetInt32(headIdx);
-        player.AmuletSlotEquipId = reader.IsDBNull(amuletIdx) ? 0 : reader.GetInt32(amuletIdx);
-        player.BodySlotEquipId = reader.IsDBNull(bodyIdx) ? 0 : reader.GetInt32(bodyIdx);
-        player.LegsSlotEquipId = reader.IsDBNull(legsIdx) ? 0 : reader.GetInt32(legsIdx);
-        player.BootsSlotEquipId = reader.IsDBNull(bootsIdx) ? 0 : reader.GetInt32(bootsIdx);
-        player.MainHandSlotEquipId = reader.IsDBNull(mainHandIdx) ? 0 : reader.GetInt32(mainHandIdx);
-        player.OffHandSlotEquipId = reader.IsDBNull(offHandIdx) ? 0 : reader.GetInt32(offHandIdx);
-        player.RingSlotEquipId = reader.IsDBNull(ringIdx) ? 0 : reader.GetInt32(ringIdx);
-        player.CapeSlotEquipId = reader.IsDBNull(capeIdx) ? 0 : reader.GetInt32(capeIdx);
+        // Load equipment IDs (default to -1 if NULL)
+        player.HeadSlotEquipId = reader.IsDBNull(headIdx) ? -1 : reader.GetInt32(headIdx);
+        player.AmuletSlotEquipId = reader.IsDBNull(amuletIdx) ? -1 : reader.GetInt32(amuletIdx);
+        player.BodySlotEquipId = reader.IsDBNull(bodyIdx) ? -1 : reader.GetInt32(bodyIdx);
+        player.LegsSlotEquipId = reader.IsDBNull(legsIdx) ? -1 : reader.GetInt32(legsIdx);
+        player.BootsSlotEquipId = reader.IsDBNull(bootsIdx) ? -1 : reader.GetInt32(bootsIdx);
+        player.MainHandSlotEquipId = reader.IsDBNull(mainHandIdx) ? -1 : reader.GetInt32(mainHandIdx);
+        player.OffHandSlotEquipId = reader.IsDBNull(offHandIdx) ? -1 : reader.GetInt32(offHandIdx);
+        player.RingSlotEquipId = reader.IsDBNull(ringIdx) ? -1 : reader.GetInt32(ringIdx);
+        player.CapeSlotEquipId = reader.IsDBNull(capeIdx) ? -1 : reader.GetInt32(capeIdx);
 
-        // Log equipped items (non-zero values)
+        // Log equipped items (values >= 0)
         var equippedCount = 0;
-        if (player.HeadSlotEquipId > 0) equippedCount++;
-        if (player.AmuletSlotEquipId > 0) equippedCount++;
-        if (player.BodySlotEquipId > 0) equippedCount++;
-        if (player.LegsSlotEquipId > 0) equippedCount++;
-        if (player.BootsSlotEquipId > 0) equippedCount++;
-        if (player.MainHandSlotEquipId > 0) equippedCount++;
-        if (player.OffHandSlotEquipId > 0) equippedCount++;
-        if (player.RingSlotEquipId > 0) equippedCount++;
-        if (player.CapeSlotEquipId > 0) equippedCount++;
+        if (player.HeadSlotEquipId >= 0) equippedCount++;
+        if (player.AmuletSlotEquipId >= 0) equippedCount++;
+        if (player.BodySlotEquipId >= 0) equippedCount++;
+        if (player.LegsSlotEquipId >= 0) equippedCount++;
+        if (player.BootsSlotEquipId >= 0) equippedCount++;
+        if (player.MainHandSlotEquipId >= 0) equippedCount++;
+        if (player.OffHandSlotEquipId >= 0) equippedCount++;
+        if (player.RingSlotEquipId >= 0) equippedCount++;
+        if (player.CapeSlotEquipId >= 0) equippedCount++;
 
         Console.WriteLine($"Loaded equipment with {equippedCount} equipped items");
     }

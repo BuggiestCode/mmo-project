@@ -14,20 +14,23 @@ public class AuthHandler : IMessageHandler<AuthMessage>
     private readonly DatabaseService _database;
     private readonly TerrainService _terrain;
     private readonly NPCService _npcService;
+    private readonly EquipmentBonusService _equipmentBonusService;
     private readonly JwtSecurityTokenHandler _tokenHandler;
     private readonly ILogger<AuthHandler> _logger;
-    
+
     public AuthHandler(
         GameWorldService gameWorld,
         DatabaseService database,
         TerrainService terrain,
         NPCService npcService,
+        EquipmentBonusService equipmentBonusService,
         ILogger<AuthHandler> logger)
     {
         _gameWorld = gameWorld;
         _database = database;
         _terrain = terrain;
         _npcService = npcService;
+        _equipmentBonusService = equipmentBonusService;
         _logger = logger;
         _tokenHandler = new JwtSecurityTokenHandler();
     }
@@ -147,6 +150,13 @@ public class AuthHandler : IMessageHandler<AuthMessage>
             
             // Load or create player
             var player = await _database.LoadOrCreatePlayerAsync(userId);
+
+            // Recalculate equipment bonuses after loading from database
+            if (player != null)
+            {
+                _equipmentBonusService.RecalculateEquipmentBonuses(player);
+            }
+
             if (player == null)
             {
                 _logger.LogError("Failed to load/create player");

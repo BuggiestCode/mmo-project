@@ -34,15 +34,15 @@ CREATE TABLE players (
 
   inventory                  JSONB NOT NULL DEFAULT '[]'::jsonb,
 
-  head_slot_equip_id         INTEGER   NOT NULL DEFAULT 0,
-  amulet_slot_equip_id       INTEGER   NOT NULL DEFAULT 0,
-  body_slot_equip_id         INTEGER   NOT NULL DEFAULT 0,
-  legs_slot_equip_id         INTEGER   NOT NULL DEFAULT 0,
-  boots_slot_equip_id        INTEGER   NOT NULL DEFAULT 0,
-  main_hand_slot_equip_id    INTEGER   NOT NULL DEFAULT 0,
-  off_hand_slot_equip_id     INTEGER   NOT NULL DEFAULT 0,
-  ring_slot_equip_id         INTEGER   NOT NULL DEFAULT 0,
-  cape_slot_equip_id         INTEGER   NOT NULL DEFAULT 0
+  head_slot_equip_id         INTEGER   NOT NULL DEFAULT -1,
+  amulet_slot_equip_id       INTEGER   NOT NULL DEFAULT -1,
+  body_slot_equip_id         INTEGER   NOT NULL DEFAULT -1,
+  legs_slot_equip_id         INTEGER   NOT NULL DEFAULT -1,
+  boots_slot_equip_id        INTEGER   NOT NULL DEFAULT -1,
+  main_hand_slot_equip_id    INTEGER   NOT NULL DEFAULT -1,
+  off_hand_slot_equip_id     INTEGER   NOT NULL DEFAULT -1,
+  ring_slot_equip_id         INTEGER   NOT NULL DEFAULT -1,
+  cape_slot_equip_id         INTEGER   NOT NULL DEFAULT -1
 );
 
 -- Game server bootstrap will attempt to insert the userID for account with username 'admin', if there is no user by this name it will fail, register the account and restart server (must be done for each env)
